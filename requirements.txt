@@ -1,0 +1,29 @@
+# Core ML
+torch
+torchvision
+torchaudio
+transformers
+scikit-learn
+opencv-python-headless
+ultralytics
+
+# Data
+pandas
+numpy
+matplotlib
+seaborn
+Pillow
+
+# Notebook
+jupyter
+jupyterlab
+ipywidgets
+ipykernel
+
+# Utilities
+tqdm
+python-dotenv
+
+#ocr
+paddlepaddle
+paddleocr

@@ -1,0 +1,9 @@
+myvenv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.git
+.gitignore
+models/
+data/
