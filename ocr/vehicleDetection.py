@@ -10,11 +10,9 @@ class VehicleDetection :
         detections = []
         for result in results:
             for box in result.boxes:
-                x1, y1, x2, y2 = box.xyxy.numpy()[0]
                 cls = int(box.cls)
                 conf = float(box.conf)
                 class_name = self.model.names[cls]
-                if conf > 0.8 :
-                    detections.append((class_name, conf, (x1, y1, x2, y2)))
+                detections.append((class_name, conf))
         return detections
 
