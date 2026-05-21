@@ -8,24 +8,30 @@ import cv2
 script_dir = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(script_dir, 'models/license_plate.pt')
 
-cap = cv2.VideoCapture(0)
-
-VD = VehicleDetection('yolon')
+cap = cv2.VideoCapture(os.path.join(script_dir,'test_video.mp4'))
+if not cap.isOpened():
+    print("Error: Could not open video.")
+    exit()
+if cap:
+    print("Video opened successfully.")
 LPD = LicensePlateDetection(model_path)
+if LPD :
+    print("License Plate Detection model loaded successfully.")
 PI = PaddleInference()
+if PI:
+    print("Paddle OCR model loaded successfully.")
 
-if __name__ == "__main__" :
-    for frames in frame(cap):
-        detections = VD.vehicle_class(frames)
-        for class_name, conf, (x1, y1, x2, y2) in detections:
-            vehicle_img = frames[int(y1):int(y2), int(x1):int(x2)]
-            coords = LPD.license_coordinates(vehicle_img)
-            if coords is None:
-                continue  # Skip this frame if no plate detected
+for frames in frame(cap):
+    coords = LPD.license_coordinates(frames)
+    if coords is None:
+        continue  # Skip this frame if no plate detected
 
-            x1, y1, x2, y2 = coords
-            plate_img = LPD.crop_into_plate(vehicle_img, x1, y1, x2, y2)
-            res = PI.ocr_inference(plate_img)
-            print(res)
-
-    
+    x1, y1, x2, y2 = coords
+   
+    plate_img = LPD.crop_into_plate(frames, x1, y1, x2, y2)
+    print(f"Plate crop size: {plate_img.shape[1]}x{plate_img.shape[0]}px")
+    res = PI.ocr_inference(plate_img)
+    if res:
+        print("OCR result:\n",res)
+    else:
+        print("OCR returned None")
