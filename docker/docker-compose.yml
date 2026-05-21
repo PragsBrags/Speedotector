@@ -1,0 +1,39 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: readtheroad-app:latest
+    container_name: readtheroad-app
+    volumes:
+      - ../ingestion:/app/ingestion
+      - ../ocr:/app/ocr
+      - ../src:/app/src
+      - ../models:/app/models:ro
+      - ../main.py:/app/main.py:ro
+      - ../test_video.mp4:/app/test_video.mp4:ro
+    environment:
+      PYTHONPATH: /app
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+    command: ["python", "main.py"]
+
+  lab:
+    profiles: ["lab"]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: readtheroad-app:latest
+    container_name: readtheroad-lab
+    ports:
+      - "8888:8888"
+    volumes:
+      - ../ingestion:/app/ingestion
+      - ../ocr:/app/ocr
+      - ../src:/app/src
+      - ../models:/app/models:ro
+      - ../main.py:/app/main.py:ro
+      - ../test_video.mp4:/app/test_video.mp4:ro
+    environment:
+      PYTHONPATH: /app
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+    command: ["jupyter", "lab", "--ip=0.0.0.0", "--allow-root", "--no-browser"]

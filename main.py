@@ -9,8 +9,17 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(script_dir, 'models/license_plate.pt')
 
 cap = cv2.VideoCapture(os.path.join(script_dir,'test_video.mp4'))
+if not cap.isOpened():
+    print("Error: Could not open video.")
+    exit()
+if cap:
+    print("Video opened successfully.")
 LPD = LicensePlateDetection(model_path)
+if LPD :
+    print("License Plate Detection model loaded successfully.")
 PI = PaddleInference()
+if PI:
+    print("Paddle OCR model loaded successfully.")
 
 for frames in frame(cap):
     coords = LPD.license_coordinates(frames)
