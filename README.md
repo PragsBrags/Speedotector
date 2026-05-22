@@ -36,6 +36,8 @@ The current demo uses `test_video.mp4`, a YOLO license-plate model at `models/li
 
 Make sure Docker Desktop is running first.
 
+### Windows
+
 From the project root, build and run the app:
 
 ```powershell
@@ -48,17 +50,37 @@ To stop it:
 docker compose -f docker\docker-compose.yml down
 ```
 
-## Run Jupyter Lab With Docker
-
-The Docker setup also includes an optional Jupyter Lab service:
+To run Jupyter Lab (optional):
 
 ```powershell
 docker compose -f docker\docker-compose.yml --profile lab up --build lab
 ```
 
+### Linux/macOS
+
+From the project root, build and run the app:
+
+```bash
+docker compose -f docker/docker-compose.yml up --build app
+```
+
+To stop it:
+
+```bash
+docker compose -f docker/docker-compose.yml down
+```
+
+To run Jupyter Lab (optional):
+
+```bash
+docker compose -f docker/docker-compose.yml --profile lab up --build lab
+```
+
 Then open the Jupyter URL printed in the terminal.
 
 ## Run Locally Without Docker
+
+### Windows
 
 Create and activate a virtual environment:
 
@@ -76,6 +98,27 @@ pip install -r requirements.txt
 Run the pipeline:
 
 ```powershell
+python main.py
+```
+
+### Linux/macOS
+
+Create and activate a virtual environment:
+
+```bash
+python3 -m venv venv_paddle
+source venv_paddle/bin/activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the pipeline:
+
+```bash
 python main.py
 ```
 
