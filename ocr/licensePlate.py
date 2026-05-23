@@ -44,14 +44,8 @@ class LicensePlateDetection :
         return plate_img
     
 class PaddleInference :
-
-    def __init__(self):
-        os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
-        self.pipeline = PaddleOCR(
-            use_doc_orientation_classify=False, 
-            use_doc_unwarping=False,            
-            use_textline_orientation=False,      
-        )
+    def __init__(self): 
+        self.pipeline = PaddleOCR(use_angle_cls=False, lang='en')
 
     def preprocess_for_ocr(self, plate_img):
 
@@ -78,15 +72,16 @@ class PaddleInference :
 
     def ocr_inference(self, plate_img):
         processed = self.preprocess_for_ocr(plate_img)
-        output = self.pipeline.predict(processed)
+        output = self.pipeline.ocr(processed)
         
         all_texts = []
         all_scores = []
-        for res in output:
-            texts = res.get('rec_texts', [])
-            scores = res.get('rec_scores', [])
-            all_texts.extend(texts)
-            all_scores.extend(scores)
+        if output and output[0]:
+            for line in output[0]:
+                text = line[1][0]
+                score = line[1][1]
+                all_texts.append(text)
+                all_scores.append(score)
         
         if all_texts:
             print(f"PLATE TEXT : {' '.join(all_texts)}")

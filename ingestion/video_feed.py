@@ -40,10 +40,12 @@ def frame(cap) :
                 
                 frames_since_motion = 0
         
-        if active_motion and best_frame is not None:
-            frames_since_motion = frames_since_motion + 1
+            if not active_motion:
+                frames_since_motion += 1
+            else:
+                frames_since_motion = 0
 
-            if frames_since_motion > COOLDOWN_LIMIT:
+            if not active_motion and best_frame is not None and frames_since_motion > COOLDOWN_LIMIT:
                 yield best_frame
                 best_frame = None
                 max_score = -1
