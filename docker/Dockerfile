@@ -30,7 +30,7 @@ RUN python -m pip install --upgrade pip setuptools wheel \
 # Copy the runnable project files into the image for plain docker run usage.
 COPY ingestion/ ./ingestion/
 COPY ocr/ ./ocr/
-COPY src/ ./src/
+# COPY src/ ./src/
 COPY models/ ./models/
 COPY main.py test_video.mp4 ./
 
