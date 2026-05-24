@@ -27,3 +27,7 @@ python-dotenv
 #ocr
 paddlepaddle==2.6.2
 paddleocr==2.8.1
+
+#database
+SQLAlchemy
+pymysql
