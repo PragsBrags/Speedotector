@@ -5,9 +5,12 @@ services:
       dockerfile: docker/Dockerfile
     image: readtheroad-app:latest
     container_name: readtheroad-app
+    env_file:
+      - ../.env
     volumes:
       - ../ingestion:/app/ingestion
       - ../ocr:/app/ocr
+      - ../db:/app/db
       - ../src:/app/src
       - ../models:/app/models:ro
       - ../main.py:/app/main.py:ro
@@ -26,9 +29,12 @@ services:
     container_name: readtheroad-lab
     ports:
       - "8888:8888"
+    env_file:
+      - ../.env
     volumes:
       - ../ingestion:/app/ingestion
       - ../ocr:/app/ocr
+      - ../db:/app/db
       - ../src:/app/src
       - ../models:/app/models:ro
       - ../main.py:/app/main.py:ro
