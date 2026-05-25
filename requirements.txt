@@ -1,24 +1,10 @@
-# Core ML
-torch
-torchvision
-torchaudio
-transformers
-scikit-learn
-opencv-python-headless
+#core
+opencv-python
 ultralytics
 
 # Data
 pandas
 numpy
-matplotlib
-seaborn
-Pillow
-
-# Notebook
-jupyter
-jupyterlab
-ipywidgets
-ipykernel
 
 # Utilities
 tqdm
