@@ -40,7 +40,7 @@ def frame(cap) :
                 area = cv2.contourArea(cnt)
                 if area > THRESHOLD:
                     active_motion = True
-                    score = calculate_sharpness(frame)
+                    score = calculate_sharpness(roi)
                     final_score = score * area
 
                     if final_score > max_score:
