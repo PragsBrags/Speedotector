@@ -1,13 +1,19 @@
 import cv2
 
 def cropping_selection(cap):
+    window_name = "Select Static Zones"
     ret, first_frame = cap.read()
     if not ret:
         print("Failed to read video")
-        cap.release()
-        exit()
+        return None
 
-    rects = cv2.selectROIs("Select Static Zones", first_frame, fromCenter=False)
+    rects = cv2.selectROIs(window_name, first_frame, fromCenter=False)
+    cv2.destroyWindow(window_name)
+
+    if rects is None or len(rects) == 0:
+        print("No ROI selected. Select a region with Space/Enter, then press Escape to continue.")
+        return None
+
     return rects
 
 def ROI_cropping_all_frames(frame, rects):

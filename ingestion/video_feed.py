@@ -13,13 +13,15 @@ def calculate_sharpness(img):
 
 def frame(cap) :
     # Threshold for motion detection
-    THRESHOLD = 30
+    THRESHOLD = 100
     best_frame = None
     max_score = -1
     frames_since_motion = 0
     COOLDOWN_LIMIT = 10
 
     rects = cropping_selection(cap)
+    if rects is None:
+        return
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -45,7 +47,7 @@ def frame(cap) :
 
                     if final_score > max_score:
                         max_score = final_score
-                        best_frame = frame.copy()
+                        best_frame = roi.copy()
                     
                     frames_since_motion = 0
             

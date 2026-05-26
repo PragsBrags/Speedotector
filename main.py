@@ -38,7 +38,7 @@ def save_detection(db, video_id, plate_text, coords, plate_img):
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.join(script_dir, 'models/license_plate.pt')
-video_path = os.path.join(script_dir, 'test_video.mp4')
+video_path = os.path.join(script_dir, 'test2.mp4')
 
 cap = cv2.VideoCapture(video_path)
 if not cap.isOpened():
