@@ -1,9 +1,11 @@
 import os
-from ingestion.video_feed import frame
-from ocr.licensePlate import LicensePlateDetection, PaddleInference
+
 import cv2
+
 from db.database import SessionLocal, create_tables
 from db.models import Detection, Video
+from ingestion.video_feed import frame
+from ocr.licensePlate import LicensePlateDetection, PaddleInference
 
 
 def save_video(db, video_path):
@@ -36,9 +38,10 @@ def save_detection(db, video_id, plate_text, coords, plate_img):
     db.refresh(detection)
     return detection
 
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
-model_path = os.path.join(script_dir, 'models/license_plate.pt')
-video_path = os.path.join(script_dir, 'test2.mp4')
+model_path = os.path.join(script_dir, "models/license_plate.pt")
+video_path = os.path.join(script_dir, "test2.mp4")
 
 cap = cv2.VideoCapture(video_path)
 if not cap.isOpened():
@@ -53,7 +56,7 @@ video = save_video(db, video_path)
 print(f"Video saved to database with id: {video.id}")
 
 LPD = LicensePlateDetection(model_path)
-if LPD :
+if LPD:
     print("License Plate Detection model loaded successfully.")
 PI = PaddleInference()
 if PI:
@@ -71,7 +74,7 @@ try:
         print(f"Plate crop size: {plate_img.shape[1]}x{plate_img.shape[0]}px")
         res = PI.ocr_inference(plate_img)
         if res:
-            print("OCR result:\n",res)
+            print("OCR result:\n", res)
             detection = save_detection(db, video.id, res, coords, plate_img)
             print(f"Detection saved to database with id: {detection.id}")
         else:

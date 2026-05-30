@@ -1,10 +1,10 @@
 from ultralytics import YOLO
-import cv2
 
-class VehicleDetection :
-    def __init__ (self, yolo_model) :
+
+class VehicleDetection:
+    def __init__(self, yolo_model):
         self.model = YOLO(yolo_model)
-    
+
     def vehicle_class(self, frame):
         results = self.model([frame], stream=False)
         detections = []
@@ -15,4 +15,3 @@ class VehicleDetection :
                 class_name = self.model.names[cls]
                 detections.append((class_name, conf))
         return detections
-
