@@ -17,3 +17,7 @@ paddleocr==2.8.1
 #database
 SQLAlchemy
 pymysql
+
+#webui
+streamlit
+pillow
