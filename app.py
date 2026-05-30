@@ -4,7 +4,31 @@ from pathlib import Path
 
 import cv2
 import streamlit as st
+import streamlit.elements.image as st_image
 from PIL import Image
+from streamlit.elements.lib import image_utils
+from streamlit.elements.lib.layout_utils import LayoutConfig
+
+if not hasattr(st_image, "image_to_url"):
+
+    def image_to_url(
+        image,
+        width=None,
+        clamp=True,
+        channels="RGB",
+        output_format="PNG",
+        image_id="image",
+    ):
+        return image_utils.image_to_url(
+            image,
+            LayoutConfig(width=width),
+            clamp,
+            channels,
+            output_format,
+            image_id,
+        )
+
+    st_image.image_to_url = image_to_url
 
 try:
     from streamlit_drawable_canvas import st_canvas
@@ -19,7 +43,7 @@ st.markdown(
     """
     <style>
         .block-container {
-            padding-top: 3rem;
+            padding-top: 2rem;
             padding-bottom: 1rem;
             max-width: 100rem;
         }
@@ -30,7 +54,7 @@ st.markdown(
 
         div[data-testid="stImage"] img,
         div[data-testid="stVideo"] video {
-            max-height: 58vh;
+            max-height: 56vh;
             object-fit: contain;
         }
 
@@ -41,6 +65,32 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+def clamp_roi(x, y, width, height, frame_width, frame_height):
+    x = max(0, min(int(x), frame_width - 1))
+    y = max(0, min(int(y), frame_height - 1))
+    width = max(1, min(int(width), frame_width - x))
+    height = max(1, min(int(height), frame_height - y))
+    return x, y, width, height
+
+
+def update_roi_state(roi):
+    x, y, width, height = roi
+    st.session_state["roi_x"] = x
+    st.session_state["roi_y"] = y
+    st.session_state["roi_w"] = width
+    st.session_state["roi_h"] = height
+
+
+def roi_state():
+    return (
+        st.session_state["roi_x"],
+        st.session_state["roi_y"],
+        st.session_state["roi_w"],
+        st.session_state["roi_h"],
+    )
+
 
 st.title("Speedotector")
 st.write(
@@ -81,54 +131,83 @@ if uploaded_file:
     h, w = first_frame.shape[:2]
     first_frame_rgb = cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB)
 
-    with st.expander("Video preview", expanded=False):
-        st.video(video_path)
-
-    st.subheader("Region of interest")
+    st.subheader("Detection setup")
 
     if use_full_frame:
         roi = (0, 0, w, h)
-        st.info(f"Using full frame: x=0, y=0, width={w}, height={h}")
-        st.image(
-            first_frame_rgb, caption="First frame preview", use_container_width=True
-        )
     else:
         if "roi_x" not in st.session_state:
-            st.session_state["roi_x"] = 0
-            st.session_state["roi_y"] = 0
-            st.session_state["roi_w"] = w
-            st.session_state["roi_h"] = h
+            update_roi_state((0, 0, w, h))
         else:
-            st.session_state["roi_x"] = min(int(st.session_state["roi_x"]), w - 1)
-            st.session_state["roi_y"] = min(int(st.session_state["roi_y"]), h - 1)
-            st.session_state["roi_w"] = min(
-                int(st.session_state["roi_w"]), w - st.session_state["roi_x"]
+            update_roi_state(clamp_roi(*roi_state(), w, h))
+
+        control_col, canvas_col = st.columns([1, 2.2], vertical_alignment="top")
+
+        with control_col:
+            st.caption("Exact coordinates")
+            x = st.number_input(
+                "X",
+                min_value=0,
+                max_value=w - 1,
+                value=st.session_state["roi_x"],
             )
-            st.session_state["roi_h"] = min(
-                int(st.session_state["roi_h"]), h - st.session_state["roi_y"]
+            y = st.number_input(
+                "Y",
+                min_value=0,
+                max_value=h - 1,
+                value=st.session_state["roi_y"],
+            )
+            roi_w = min(st.session_state["roi_w"], w - int(x))
+            roi_h = min(st.session_state["roi_h"], h - int(y))
+            roi_w = st.number_input(
+                "Width",
+                min_value=1,
+                max_value=w - int(x),
+                value=roi_w,
+            )
+            roi_h = st.number_input(
+                "Height",
+                min_value=1,
+                max_value=h - int(y),
+                value=roi_h,
             )
 
-        selector_col, input_col = st.columns([3, 1])
+            manual_roi = clamp_roi(x, y, roi_w, roi_h, w, h)
+            if manual_roi != roi_state():
+                update_roi_state(manual_roi)
 
-        with selector_col:
+        with canvas_col:
+            max_canvas_width = 980
+            max_canvas_height = 520
+            scale = min(max_canvas_width / w, max_canvas_height / h, 1)
+            canvas_width = int(w * scale)
+            canvas_height = int(h * scale)
+            canvas_image = Image.fromarray(first_frame_rgb).resize(
+                (canvas_width, canvas_height)
+            )
+            current_roi = roi_state()
+
             if st_canvas is None:
-                st.warning(
-                    "Install streamlit-drawable-canvas to draw ROI boxes. Manual inputs are still available."
+                st.error(
+                    "Install streamlit-drawable-canvas to draw ROI boxes: pip install streamlit-drawable-canvas"
                 )
-                st.image(
-                    first_frame_rgb,
-                    caption="First frame preview",
-                    use_container_width=True,
-                )
+                st.image(canvas_image, caption="ROI selector unavailable")
             else:
-                max_canvas_width = 960
-                max_canvas_height = 520
-                scale = min(max_canvas_width / w, max_canvas_height / h, 1)
-                canvas_width = int(w * scale)
-                canvas_height = int(h * scale)
-                canvas_image = Image.fromarray(first_frame_rgb).resize(
-                    (canvas_width, canvas_height)
-                )
+                initial_drawing = {
+                    "version": "4.4.0",
+                    "objects": [
+                        {
+                            "type": "rect",
+                            "left": current_roi[0] * scale,
+                            "top": current_roi[1] * scale,
+                            "width": current_roi[2] * scale,
+                            "height": current_roi[3] * scale,
+                            "fill": "rgba(255, 75, 75, 0.18)",
+                            "stroke": "#ff4b4b",
+                            "strokeWidth": 3,
+                        }
+                    ],
+                }
 
                 canvas_result = st_canvas(
                     fill_color="rgba(255, 75, 75, 0.18)",
@@ -139,56 +218,36 @@ if uploaded_file:
                     height=canvas_height,
                     width=canvas_width,
                     drawing_mode="rect",
-                    key="roi_canvas",
+                    initial_drawing=initial_drawing,
+                    key=f"roi_canvas_{upload_signature}",
                 )
 
                 if canvas_result.json_data and canvas_result.json_data["objects"]:
                     selected_box = canvas_result.json_data["objects"][-1]
-                    st.session_state["roi_x"] = int(selected_box["left"] / scale)
-                    st.session_state["roi_y"] = int(selected_box["top"] / scale)
-                    st.session_state["roi_w"] = max(
-                        1, int(selected_box["width"] * selected_box["scaleX"] / scale)
+                    canvas_roi = clamp_roi(
+                        selected_box["left"] / scale,
+                        selected_box["top"] / scale,
+                        selected_box["width"] * selected_box["scaleX"] / scale,
+                        selected_box["height"] * selected_box["scaleY"] / scale,
+                        w,
+                        h,
                     )
-                    st.session_state["roi_h"] = max(
-                        1, int(selected_box["height"] * selected_box["scaleY"] / scale)
-                    )
-                    st.session_state["roi_x"] = min(st.session_state["roi_x"], w - 1)
-                    st.session_state["roi_y"] = min(st.session_state["roi_y"], h - 1)
-                    st.session_state["roi_w"] = min(
-                        st.session_state["roi_w"], w - st.session_state["roi_x"]
-                    )
-                    st.session_state["roi_h"] = min(
-                        st.session_state["roi_h"], h - st.session_state["roi_y"]
-                    )
+                    if canvas_roi != roi_state():
+                        update_roi_state(canvas_roi)
+                        st.rerun()
 
-        with input_col:
-            st.caption("ROI coordinates")
-            x = st.number_input(
-                "x",
-                min_value=0,
-                max_value=w - 1,
-                key="roi_x",
-            )
-            y = st.number_input(
-                "y",
-                min_value=0,
-                max_value=h - 1,
-                key="roi_y",
-            )
-            roi_w = st.number_input(
-                "width",
-                min_value=1,
-                max_value=w - int(x),
-                key="roi_w",
-            )
-            roi_h = st.number_input(
-                "height",
-                min_value=1,
-                max_value=h - int(y),
-                key="roi_h",
-            )
+            roi = roi_state()
+            st.caption(f"ROI: x={roi[0]}, y={roi[1]}, width={roi[2]}, height={roi[3]}")
 
-        roi = (int(x), int(y), int(roi_w), int(roi_h))
+    if use_full_frame:
+        st.image(
+            first_frame_rgb,
+            caption=f"Full frame preview: width={w}, height={h}",
+            use_container_width=True,
+        )
+
+    with st.expander("Playback", expanded=False):
+        st.video(video_path)
 
     save_to_db = st.checkbox("Save results to database", value=False)
 
