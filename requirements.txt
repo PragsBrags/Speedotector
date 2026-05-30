@@ -20,4 +20,5 @@ pymysql
 
 #webui
 streamlit
+streamlit-drawable-canvas
 pillow
