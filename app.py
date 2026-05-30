@@ -4,10 +4,43 @@ from pathlib import Path
 
 import cv2
 import streamlit as st
+from PIL import Image
+
+try:
+    from streamlit_drawable_canvas import st_canvas
+except ImportError:
+    st_canvas = None
 
 from pipeline import process_video
 
 st.set_page_config(page_title="Speedotector", layout="wide")
+
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding-top: 3rem;
+            padding-bottom: 1rem;
+            max-width: 100rem;
+        }
+
+        h1 {
+            margin-bottom: 0.25rem;
+        }
+
+        div[data-testid="stImage"] img,
+        div[data-testid="stVideo"] video {
+            max-height: 58vh;
+            object-fit: contain;
+        }
+
+        div[data-testid="stFileUploader"] section {
+            min-height: 4.25rem;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.title("Speedotector")
 st.write(
@@ -37,8 +70,6 @@ if uploaded_file:
     else:
         video_path = st.session_state["video_path"]
 
-    st.video(video_path)
-
     cap = cv2.VideoCapture(video_path)
     ret, first_frame = cap.read()
     cap.release()
@@ -48,18 +79,114 @@ if uploaded_file:
         st.stop()
 
     h, w = first_frame.shape[:2]
+    first_frame_rgb = cv2.cvtColor(first_frame, cv2.COLOR_BGR2RGB)
 
-    st.subheader("ROI settings")
+    with st.expander("Video preview", expanded=False):
+        st.video(video_path)
+
+    st.subheader("Region of interest")
 
     if use_full_frame:
         roi = (0, 0, w, h)
         st.info(f"Using full frame: x=0, y=0, width={w}, height={h}")
+        st.image(
+            first_frame_rgb, caption="First frame preview", use_container_width=True
+        )
     else:
-        col1, col2, col3, col4 = st.columns(4)
-        x = col1.number_input("x", min_value=0, max_value=w - 1, value=0)
-        y = col2.number_input("y", min_value=0, max_value=h - 1, value=0)
-        roi_w = col3.number_input("width", min_value=1, max_value=w, value=w)
-        roi_h = col4.number_input("height", min_value=1, max_value=h, value=h)
+        if "roi_x" not in st.session_state:
+            st.session_state["roi_x"] = 0
+            st.session_state["roi_y"] = 0
+            st.session_state["roi_w"] = w
+            st.session_state["roi_h"] = h
+        else:
+            st.session_state["roi_x"] = min(int(st.session_state["roi_x"]), w - 1)
+            st.session_state["roi_y"] = min(int(st.session_state["roi_y"]), h - 1)
+            st.session_state["roi_w"] = min(
+                int(st.session_state["roi_w"]), w - st.session_state["roi_x"]
+            )
+            st.session_state["roi_h"] = min(
+                int(st.session_state["roi_h"]), h - st.session_state["roi_y"]
+            )
+
+        selector_col, input_col = st.columns([3, 1])
+
+        with selector_col:
+            if st_canvas is None:
+                st.warning(
+                    "Install streamlit-drawable-canvas to draw ROI boxes. Manual inputs are still available."
+                )
+                st.image(
+                    first_frame_rgb,
+                    caption="First frame preview",
+                    use_container_width=True,
+                )
+            else:
+                max_canvas_width = 960
+                max_canvas_height = 520
+                scale = min(max_canvas_width / w, max_canvas_height / h, 1)
+                canvas_width = int(w * scale)
+                canvas_height = int(h * scale)
+                canvas_image = Image.fromarray(first_frame_rgb).resize(
+                    (canvas_width, canvas_height)
+                )
+
+                canvas_result = st_canvas(
+                    fill_color="rgba(255, 75, 75, 0.18)",
+                    stroke_width=3,
+                    stroke_color="#ff4b4b",
+                    background_image=canvas_image,
+                    update_streamlit=True,
+                    height=canvas_height,
+                    width=canvas_width,
+                    drawing_mode="rect",
+                    key="roi_canvas",
+                )
+
+                if canvas_result.json_data and canvas_result.json_data["objects"]:
+                    selected_box = canvas_result.json_data["objects"][-1]
+                    st.session_state["roi_x"] = int(selected_box["left"] / scale)
+                    st.session_state["roi_y"] = int(selected_box["top"] / scale)
+                    st.session_state["roi_w"] = max(
+                        1, int(selected_box["width"] * selected_box["scaleX"] / scale)
+                    )
+                    st.session_state["roi_h"] = max(
+                        1, int(selected_box["height"] * selected_box["scaleY"] / scale)
+                    )
+                    st.session_state["roi_x"] = min(st.session_state["roi_x"], w - 1)
+                    st.session_state["roi_y"] = min(st.session_state["roi_y"], h - 1)
+                    st.session_state["roi_w"] = min(
+                        st.session_state["roi_w"], w - st.session_state["roi_x"]
+                    )
+                    st.session_state["roi_h"] = min(
+                        st.session_state["roi_h"], h - st.session_state["roi_y"]
+                    )
+
+        with input_col:
+            st.caption("ROI coordinates")
+            x = st.number_input(
+                "x",
+                min_value=0,
+                max_value=w - 1,
+                key="roi_x",
+            )
+            y = st.number_input(
+                "y",
+                min_value=0,
+                max_value=h - 1,
+                key="roi_y",
+            )
+            roi_w = st.number_input(
+                "width",
+                min_value=1,
+                max_value=w - int(x),
+                key="roi_w",
+            )
+            roi_h = st.number_input(
+                "height",
+                min_value=1,
+                max_value=h - int(y),
+                key="roi_h",
+            )
 
         roi = (int(x), int(y), int(roi_w), int(roi_h))
 
