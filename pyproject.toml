@@ -1,0 +1,26 @@
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+fix = true
+
+[tool.ruff.lint]
+select = [
+    "E",    # style errors
+    "F",    # pyflakes
+    "I",    # import sorting
+    "B",    # common bugs
+    "UP",   # modern Python upgrades
+    "SIM",  # simplifications
+]
+ignore = [
+    "E501", # Black handles line wrapping
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
