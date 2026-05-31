@@ -1,19 +1,22 @@
-#core
-opencv-python
-ultralytics
+# Core
+numpy==1.26.4
+opencv-python-headless==4.11.0.86
+
+# PyTorch CPU only installed separately in Dockerfile
+ultralytics>=8.3.0
 
 # Data
 pandas
-numpy
-
-# Utilities
 tqdm
 python-dotenv
 
-#ocr
+# OCR
 paddlepaddle==2.6.2
 paddleocr==2.8.1
 
-#database
+# Database
 SQLAlchemy
 pymysql
+
+fastapi
+uvicorn
