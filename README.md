@@ -1,22 +1,104 @@
 # Speedotector
 
-Speedotector is a Python computer-vision project for detecting license plates in a video and reading the plate text with OCR.
+Speedotector is a Python computer-vision project for detecting license plates in video and reading plate text with OCR.
 
-The current demo uses `test_video.mp4`, a YOLO license-plate model at `models/license_plate.pt`, OpenCV for video/frame processing, and PaddleOCR for text recognition.
+The current branch provides two entrypoints:
 
-This project can be run in two ways:
+- `main.py` runs the command-line ALPR pipeline.
+- `app.py` runs a Streamlit web UI for uploading a video, selecting an optional region of interest, and viewing detections.
 
-- `main.py` runs the original command-line pipeline.
-- `app.py` runs the Streamlit web UI for uploading a video, selecting a region of interest, and viewing detections.
+This is an ALPR prototype. It does not yet implement full traffic-violation detection.
+
+## Requirements
+
+- Python 3.11.
+- The YOLO license-plate model at `models/license_plate.pt`.
+- Optional database settings in `.env` or `DATABASE_URL` when saving detections.
+
+If **Save results to database** is disabled in the Streamlit UI, no database connection is required.
+
+## Run Modes
+
+| Mode | Command | Notes |
+|---|---|---|
+| CLI local | `python main.py` | Uses `test_video.mp4` by default. Override with `VIDEO_PATH=/path/to/video.mp4`. |
+| Web local | `streamlit run app.py` | Upload a video through the browser. Opens on `http://localhost:8501` by default. |
+| CLI Docker | `docker compose -f docker/docker-compose.yml up --build app` | Runs `main.py` in the container. |
+| Web Docker | `docker compose -f docker/docker-compose.yml up --build web` | Runs Streamlit on port `8501`. |
+| Jupyter Docker | `docker compose -f docker/docker-compose.yml --profile lab up --build lab` | Optional notebook/lab environment on port `8888`. |
+
+Stop Docker services with:
+
+```bash
+docker compose -f docker/docker-compose.yml down
+```
+
+## Local Setup
+
+Create and activate a virtual environment:
+
+```bash
+python3 -m venv venv_paddle
+source venv_paddle/bin/activate
+```
+
+On Windows PowerShell:
+
+```powershell
+python -m venv venv_paddle
+.\venv_paddle\Scripts\Activate.ps1
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run checks:
+
+```bash
+ruff check .
+pytest
+```
 
 ## Project Pipeline
 
-1. `main.py` opens `test_video.mp4`.
-2. `ingestion/video_feed.py` scans the video and selects useful frames with motion and sharpness checks.
-3. `ocr/licensePlate.py` loads the YOLO model and finds the best license-plate bounding box in each selected frame.
-4. The detected plate region is cropped and lightly preprocessed for OCR.
-5. PaddleOCR reads the cropped plate image.
-6. The detected plate text and confidence values are printed in the terminal.
+1. `main.py` or `app.py` calls `process_video()` from `pipeline.py`.
+2. `ingestion/video_feed.py` selects useful frames with motion and sharpness checks.
+3. `ocr/licensePlate.py` uses YOLO to find the best license-plate bounding box.
+4. The plate crop is preprocessed and sent to PaddleOCR.
+5. Results include plate text, full-frame coordinates, detector confidence, OCR confidence, OCR segments, selected-frame metadata, and optional database IDs.
+
+By default, pipeline results do not include raw image arrays. Streamlit requests `include_images=True` so it can display plate crops.
+
+## Streamlit UI
+
+1. Upload a video file (`mp4`, `mov`, `avi`, or `mkv`).
+2. Keep **Use full frame** checked to process the whole frame, or uncheck it to select a region of interest.
+3. When selecting a region of interest, draw a rectangle on the first-frame canvas or enter exact `x`, `y`, `width`, and `height` values manually.
+4. Choose whether to save detections to the database.
+5. Click **Run detection**.
+
+Uploaded videos are written to an app-managed temp directory. Replacing or clearing an upload deletes the previous temp file, and the app removes stale `speedotector_streamlit_*` temp directories older than 24 hours on startup.
+
+## Database Notes
+
+Detection rows store:
+
+- plate text,
+- full-frame bounding-box coordinates,
+- crop size,
+- detector confidence,
+- OCR confidence.
+
+There is no migration framework yet. If you already created database tables before the confidence columns were added, manually migrate the schema or drop/recreate the local tables.
+
+## Privacy Notes
+
+Uploaded videos and detected license-plate crops can contain sensitive personal data. Keep **Save results to database** disabled unless persistence is intentional, and delete old database rows or temp files when they are no longer needed.
+
+OCR debug images are disabled by default. If `PaddleInference(debug=True)` is enabled during development, debug files are written with unique filenames.
 
 ## Project Structure
 
@@ -26,139 +108,21 @@ This project can be run in two ways:
 |   |-- Dockerfile
 |   `-- docker-compose.yml
 |-- ingestion/
+|   |-- cropping.py
+|   |-- roi.py
 |   `-- video_feed.py
+|-- db/
+|   |-- database.py
+|   |-- models.py
+|   `-- repository.py
 |-- models/
 |   `-- license_plate.pt
 |-- ocr/
-|   |-- licensePlate.py
-|   `-- vehicleDetection.py
+|   `-- licensePlate.py
+|-- tests/
 |-- app.py
 |-- main.py
 |-- pipeline.py
 |-- requirements.txt
 `-- test_video.mp4
 ```
-
-## Run With Docker
-
-Make sure Docker Desktop is running first.
-
-### Windows
-
-From the project root, build and run the app:
-
-```powershell
-docker compose -f docker\docker-compose.yml up --build app
-```
-
-To stop it:
-
-```powershell
-docker compose -f docker\docker-compose.yml down
-```
-
-To run Jupyter Lab (optional):
-
-```powershell
-docker compose -f docker\docker-compose.yml --profile lab up --build lab
-```
-
-### Linux/macOS
-
-From the project root, build and run the app:
-
-```bash
-docker compose -f docker/docker-compose.yml up --build app
-```
-
-To stop it:
-
-```bash
-docker compose -f docker/docker-compose.yml down
-```
-
-To run Jupyter Lab (optional):
-
-```bash
-docker compose -f docker/docker-compose.yml --profile lab up --build lab
-```
-
-Then open the Jupyter URL printed in the terminal.
-
-## Run Locally Without Docker
-
-### Windows
-
-Create and activate a virtual environment:
-
-```powershell
-python -m venv venv_paddle
-.\venv_paddle\Scripts\Activate.ps1
-```
-
-Install dependencies:
-
-```powershell
-pip install -r requirements.txt
-```
-
-Run the pipeline:
-
-```powershell
-python main.py
-```
-
-Run the Streamlit web UI:
-
-```powershell
-streamlit run app.py
-```
-
-Then open the local URL printed by Streamlit, usually `http://localhost:8501`.
-
-### Linux/macOS
-
-Create and activate a virtual environment:
-
-```bash
-python3 -m venv venv_paddle
-source venv_paddle/bin/activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run the pipeline:
-
-```bash
-python main.py
-```
-
-Run the Streamlit web UI:
-
-```bash
-streamlit run app.py
-```
-
-Then open the local URL printed by Streamlit, usually `http://localhost:8501`.
-
-## Using the Streamlit Web UI
-
-1. Upload a video file (`mp4`, `mov`, `avi`, or `mkv`).
-2. Keep **Use full frame** checked to process the whole frame, or uncheck it to select a region of interest.
-3. When selecting a region of interest, draw a rectangle on the first-frame canvas or enter exact `x`, `y`, `width`, and `height` values manually.
-4. Choose whether to save detections to the database.
-5. Click **Run detection**.
-
-The app shows one first-frame ROI preview by default so the page stays within the visible screen height. Expand **Playback** if you want to inspect the full video.
-
-## Notes
-
-- The first Docker build can take a long time because PyTorch, PaddleOCR, OpenCV, and Jupyter are large dependencies.
-- `main.py` currently reads `test_video.mp4` from the project root.
-- `app.py` requires uploading a video through the browser; it does not automatically load `test_video.mp4`.
-- The YOLO model file must exist at `models/license_plate.pt`.
-- OCR debug images are disabled by default. Enable `PaddleInference(debug=True)` if you need them during development.
