@@ -1,6 +1,7 @@
 import cv2
 
 from ingestion.cropping import cropping_selection
+from ingestion.roi import clamp_roi_to_shape
 
 
 def calculate_sharpness(img):
@@ -9,13 +10,7 @@ def calculate_sharpness(img):
 
 
 def _clip_rect(rect, frame_shape):
-    h_frame, w_frame = frame_shape[:2]
-    x, y, w, h = map(int, rect)
-    x = max(0, min(x, w_frame - 1))
-    y = max(0, min(y, h_frame - 1))
-    w = max(1, min(w, w_frame - x))
-    h = max(1, min(h, h_frame - y))
-    return x, y, w, h
+    return clamp_roi_to_shape(rect, frame_shape)
 
 
 def _crop_with_rect(frame, rect):
@@ -29,16 +24,20 @@ def selected_frames(cap, roi=None):
     best_frame = None
     best_frame_number = None
     best_roi = None
+    best_metadata = None
     max_score = -1
     frames_since_motion = 0
     COOLDOWN_LIMIT = 10
     frame_number = -1
-    object_detector = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=16)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 0
 
     rects = cropping_selection(cap) if roi is None else [roi]
 
     if rects is None:
         return
+    object_detectors = [
+        cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=16) for _ in rects
+    ]
 
     while cap.isOpened():
         ret, current_frame = cap.read()
@@ -48,13 +47,15 @@ def selected_frames(cap, roi=None):
                     "image": best_frame,
                     "frame_number": best_frame_number,
                     "roi": best_roi,
+                    **best_metadata,
+                    "selection_reason": "end_of_video",
                 }
             return
 
         frame_number += 1
         active_motion = False
 
-        for rect in rects:
+        for rect, object_detector in zip(rects, object_detectors, strict=False):
             cropped_frame, clipped_roi = _crop_with_rect(current_frame, rect)
             mask = object_detector.apply(cropped_frame)
 
@@ -74,6 +75,15 @@ def selected_frames(cap, roi=None):
                         best_frame = cropped_frame.copy()
                         best_frame_number = frame_number
                         best_roi = clipped_roi
+                        timestamp_seconds = (
+                            frame_number / fps if fps and fps > 0 else None
+                        )
+                        best_metadata = {
+                            "motion_area": area,
+                            "sharpness": score,
+                            "score": final_score,
+                            "timestamp_seconds": timestamp_seconds,
+                        }
 
         if active_motion:
             frames_since_motion = 0
@@ -85,10 +95,13 @@ def selected_frames(cap, roi=None):
                 "image": best_frame,
                 "frame_number": best_frame_number,
                 "roi": best_roi,
+                **best_metadata,
+                "selection_reason": "motion_cooldown",
             }
             best_frame = None
             best_frame_number = None
             best_roi = None
+            best_metadata = None
             max_score = -1
 
 
