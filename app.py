@@ -1,5 +1,7 @@
 import os
+import shutil
 import tempfile
+import time
 from pathlib import Path
 
 import cv2
@@ -19,14 +21,20 @@ if not hasattr(st_image, "image_to_url"):
         output_format="PNG",
         image_id="image",
     ):
-        return image_utils.image_to_url(
-            image,
-            LayoutConfig(width=width),
-            clamp,
-            channels,
-            output_format,
-            image_id,
-        )
+        try:
+            return image_utils.image_to_url(
+                image,
+                LayoutConfig(width=width),
+                clamp,
+                channels,
+                output_format,
+                image_id,
+            )
+        except TypeError as exc:
+            raise RuntimeError(
+                "streamlit-drawable-canvas is incompatible with this Streamlit "
+                "version. Install the pinned versions from requirements.txt."
+            ) from exc
 
     st_image.image_to_url = image_to_url
 
@@ -35,6 +43,7 @@ try:
 except ImportError:
     st_canvas = None
 
+from ingestion.roi import clamp_roi
 from pipeline import process_video
 
 st.set_page_config(page_title="Speedotector", layout="wide")
@@ -67,12 +76,66 @@ st.markdown(
 )
 
 
-def clamp_roi(x, y, width, height, frame_width, frame_height):
-    x = max(0, min(int(x), frame_width - 1))
-    y = max(0, min(int(y), frame_height - 1))
-    width = max(1, min(int(width), frame_width - x))
-    height = max(1, min(int(height), frame_height - y))
-    return x, y, width, height
+TEMP_DIR_PREFIX = "speedotector_streamlit_"
+STALE_TEMP_DIR_SECONDS = 24 * 60 * 60
+
+
+def cleanup_stale_temp_dirs():
+    temp_root = Path(tempfile.gettempdir())
+    now = time.time()
+    for temp_dir in temp_root.glob(f"{TEMP_DIR_PREFIX}*"):
+        if not temp_dir.is_dir():
+            continue
+        try:
+            if now - temp_dir.stat().st_mtime > STALE_TEMP_DIR_SECONDS:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+        except OSError:
+            continue
+
+
+def remove_temp_video():
+    video_path = st.session_state.get("video_path")
+    temp_dir = st.session_state.get("video_temp_dir")
+
+    if video_path and os.path.exists(video_path):
+        os.remove(video_path)
+    if temp_dir and os.path.isdir(temp_dir):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    for key in ("video_path", "video_temp_dir", "upload_signature"):
+        st.session_state.pop(key, None)
+
+
+def write_uploaded_video(uploaded_file):
+    remove_temp_video()
+    suffix = Path(uploaded_file.name).suffix
+    temp_dir = tempfile.mkdtemp(prefix=TEMP_DIR_PREFIX)
+    video_path = Path(temp_dir) / f"uploaded{suffix}"
+    video_path.write_bytes(uploaded_file.getbuffer())
+
+    st.session_state["video_temp_dir"] = temp_dir
+    st.session_state["video_path"] = str(video_path)
+    st.session_state["upload_signature"] = (uploaded_file.name, uploaded_file.size)
+    return str(video_path)
+
+
+def model_path():
+    return str(Path(__file__).resolve().parent / "models" / "license_plate.pt")
+
+
+@st.cache_resource
+def load_models(model_path):
+    from ocr.licensePlate import LicensePlateDetection, PaddleInference
+
+    return LicensePlateDetection(model_path), PaddleInference()
+
+
+if not st.session_state.get("stale_temp_dirs_cleaned"):
+    cleanup_stale_temp_dirs()
+    st.session_state["stale_temp_dirs_cleaned"] = True
+
+if "uploader_key" not in st.session_state:
+    st.session_state["uploader_key"] = 0
 
 
 def update_roi_state(roi):
@@ -97,7 +160,16 @@ st.write(
     "Upload a video, choose an optional region of interest, and run license plate detection."
 )
 
-uploaded_file = st.file_uploader("Upload video", type=["mp4", "mov", "avi", "mkv"])
+uploaded_file = st.file_uploader(
+    "Upload video",
+    type=["mp4", "mov", "avi", "mkv"],
+    key=f"video_upload_{st.session_state['uploader_key']}",
+)
+
+if st.button("Clear uploaded video", disabled=uploaded_file is None):
+    remove_temp_video()
+    st.session_state["uploader_key"] += 1
+    st.rerun()
 
 use_full_frame = st.checkbox("Use full frame", value=True)
 
@@ -106,17 +178,7 @@ roi = None
 if uploaded_file:
     upload_signature = (uploaded_file.name, uploaded_file.size)
     if st.session_state.get("upload_signature") != upload_signature:
-        previous_video_path = st.session_state.get("video_path")
-        if previous_video_path and os.path.exists(previous_video_path):
-            os.remove(previous_video_path)
-
-        suffix = Path(uploaded_file.name).suffix
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_video:
-            temp_video.write(uploaded_file.getbuffer())
-            video_path = temp_video.name
-
-        st.session_state["upload_signature"] = upload_signature
-        st.session_state["video_path"] = video_path
+        video_path = write_uploaded_video(uploaded_file)
     else:
         video_path = st.session_state["video_path"]
 
@@ -249,7 +311,11 @@ if uploaded_file:
     with st.expander("Playback", expanded=False):
         st.video(video_path)
 
-    save_to_db = st.checkbox("Save results to database", value=False)
+    save_to_db = st.checkbox(
+        "Save results to database",
+        value=False,
+        help="If unchecked, detections are shown only in this session and no database connection is required.",
+    )
 
     if st.button("Run detection"):
         st.info("Loading models and processing video. This may take a while...")
@@ -263,11 +329,15 @@ if uploaded_file:
             progress_text.write(f"Found {len(live_results)} detection(s)...")
 
         try:
+            detector, ocr = load_models(model_path())
             results = process_video(
                 video_path=video_path,
                 roi=roi,
                 save_to_db=save_to_db,
                 progress_callback=on_result,
+                include_images=True,
+                detector=detector,
+                ocr=ocr,
             )
 
             st.success(f"Finished. Found {len(results)} detection(s).")
@@ -278,6 +348,11 @@ if uploaded_file:
                 )
                 st.write("Plate text:", result["plate_text"])
                 st.write("Coordinates:", result["coords"])
+                st.write(
+                    "Confidence:",
+                    f"detector {result['detector_confidence']:.2%}, "
+                    f"OCR {result['ocr_confidence']:.2%}",
+                )
 
                 plate_img = result["plate_img"]
                 plate_img_rgb = cv2.cvtColor(plate_img, cv2.COLOR_BGR2RGB)
@@ -285,3 +360,4 @@ if uploaded_file:
 
         except Exception as e:
             st.error(str(e))
+            st.exception(e)
