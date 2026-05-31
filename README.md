@@ -1,13 +1,20 @@
 # Speedotector
 
-Speedotector is a Python computer-vision project for detecting license plates in video and reading plate text with OCR.
+Speedotector is a compact Python computer-vision project that detects license plates in video, crops plate regions, and reads the plate text using OCR.
 
-The current branch provides two entrypoints:
+The demo uses `test2.mp4` (project root), a YOLO license-plate model at `models/license_plate.pt`, OpenCV for video processing, and PaddleOCR for text recognition.
 
 - `main.py` runs the command-line ALPR pipeline.
 - `app.py` runs a Streamlit web UI for uploading a video, selecting an optional region of interest, and viewing detections.
 
-This is an ALPR prototype. It does not yet implement full traffic-violation detection.
+1. `main.py` opens `test2.mp4` and saves video metadata to the local database.
+2. `ingestion/video_feed.py` scans the video and selects useful frames with motion and sharpness checks.
+3. `ocr/licensePlate.py` loads the YOLO model and finds the best license-plate bounding box in each selected frame.
+4. The detected plate region is cropped and lightly preprocessed for OCR.
+5. PaddleOCR reads the cropped plate image.
+6. The detected plate text and confidence values are printed in the terminal and persisted to the local DB (`db/`).
+
+Note: To change the demo video or model, update the `video_path` and `model_path` variables in `main.py` (see Configuration section).
 
 ## Requirements
 
