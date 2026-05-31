@@ -1,10 +1,10 @@
 [tool.black]
 line-length = 88
-target-version = ["py312"]
+target-version = ["py311"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py311"
 fix = true
 
 [tool.ruff.lint]
@@ -24,3 +24,6 @@ ignore = [
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
