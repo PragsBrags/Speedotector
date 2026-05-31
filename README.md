@@ -44,62 +44,107 @@ Note: To change the demo video or model, update the `video_path` and `model_path
 
 ## Run With Docker
 
-Make sure Docker Desktop (or the Docker Engine) is running.
+Make sure Docker Desktop is running first.
 
-Windows (PowerShell):
+### Windows
+
+From the project root, build and run the application:
 
 ```powershell
-docker compose -f docker\docker-compose.yml up --build app
+docker compose -f docker\docker-compose.yml up --build
 ```
 
-To stop:
+Open the dashboard:
+
+```text
+http://localhost:8000
+```
+
+Open the API documentation:
+
+```text
+http://localhost:8000/docs
+```
+
+To stop the application:
 
 ```powershell
 docker compose -f docker\docker-compose.yml down
 ```
 
-Run Jupyter Lab (optional):
+### Linux/macOS
 
-```powershell
-docker compose -f docker\docker-compose.yml --profile lab up --build lab
-```
-
-Linux/macOS (bash):
+From the project root, build and run the application:
 
 ```bash
-docker compose -f docker/docker-compose.yml up --build app
+docker compose -f docker/docker-compose.yml up --build
 ```
 
-Stop:
+Open the dashboard:
+
+```text
+http://localhost:8000
+```
+
+Open the API documentation:
+
+```text
+http://localhost:8000/docs
+```
+
+To stop the application:
 
 ```bash
 docker compose -f docker/docker-compose.yml down
 ```
 
-Run Jupyter Lab (optional):
+---
 
-```bash
-docker compose -f docker/docker-compose.yml --profile lab up --build lab
+## Run Detection From Dashboard
+
+1. Open:
+
+```text
+http://localhost:8000/docs
 ```
 
-Notes:
-- The repo uses modern `docker compose` syntax (Compose v2). If you have an older `docker-compose` binary, adapt the command.
-- The first build may take a long time due to large ML dependencies (PyTorch/PaddleOCR/OpenCV).
+2. Find:
+
+```text
+POST /run-detection
+```
+
+3. Click:
+
+```text
+Try it out
+```
+
+4. Click:
+
+```text
+Execute
+```
+
+The system will then:
+
+* Process the video
+* Detect license plates using YOLO
+* Extract text using PaddleOCR
+* Save detections to MySQL
+* Generate latest detection images in the dashboard
+
+---
 
 ## Run Locally Without Docker
-
-### System requirements
-
-- Python 3.8+ recommended.
-- If you plan to use GPU acceleration, install appropriate CUDA/cuDNN versions for your `paddlepaddle`/PyTorch setup.
 
 ### Windows
 
 Create and activate a virtual environment:
 
 ```powershell
-python -m venv venv_paddle
-.\venv_paddle\Scripts\Activate.ps1
+python -m venv venv311
+.\venv311\Scripts\Activate.ps1
 ```
 
 Install dependencies:
@@ -108,7 +153,17 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run the pipeline:
+Update `.env` for local MySQL usage:
+
+```env
+DB_HOST=localhost
+DB_PORT=3307
+DB_USER=root
+DB_PASSWORD=12345
+DB_NAME=speedotector
+```
+
+Run the application:
 
 ```powershell
 python main.py
@@ -116,12 +171,61 @@ python main.py
 
 ### Linux/macOS
 
+Create and activate a virtual environment:
+
 ```bash
-python3 -m venv venv_paddle
-source venv_paddle/bin/activate
+python3 -m venv venv311
+source venv311/bin/activate
+```
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
+```
+
+Update `.env` for local MySQL usage:
+
+```env
+DB_HOST=localhost
+DB_PORT=3307
+DB_USER=root
+DB_PASSWORD=12345
+DB_NAME=speedotector
+```
+
+Run the application:
+
+```bash
 python main.py
 ```
+
+---
+
+## Notes
+
+* The first Docker build may take several minutes because PyTorch, PaddleOCR, and OpenCV are large dependencies.
+* PaddleOCR downloads OCR models during the first startup.
+* The YOLO model file must exist at:
+
+```text
+models/license_plate.pt
+```
+
+* The input video file must exist at:
+
+```text
+test_video.mp4
+```
+
+* Detection images are automatically saved inside:
+
+```text
+outputs/
+```
+
+* The dashboard automatically refreshes to show the latest frame and detected plate crop.
+
 
 ## Configuration
 
