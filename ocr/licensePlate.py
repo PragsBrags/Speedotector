@@ -1,4 +1,6 @@
 import os
+import uuid
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -6,11 +8,25 @@ from paddleocr import PaddleOCR
 from ultralytics import YOLO
 
 
+@dataclass(frozen=True)
+class PlateDetectionResult:
+    coords: tuple[float, float, float, float]
+    confidence: float
+
+
+@dataclass(frozen=True)
+class OCRResult:
+    text: str
+    confidence: float
+    segments: list[str]
+    segment_confidences: list[float]
+
+
 class LicensePlateDetection:
     def __init__(self, yolo_path):
         self.model = YOLO(yolo_path)
 
-    def license_coordinates(self, frame):
+    def license_coordinates(self, frame, min_confidence=0.0):
         results = self.model([frame], stream=True)
 
         best_box = None
@@ -29,11 +45,17 @@ class LicensePlateDetection:
                     best_conf = conf
                     best_box = (x1, y1, x2, y2)
 
-        if best_box is not None:
+        if best_box is not None and best_conf >= min_confidence:
             print(f"Best detection chosen: conf {best_conf:.2%}")
-            return best_box
+            return PlateDetectionResult(coords=best_box, confidence=best_conf)
 
-        print("No detections at all")
+        if best_box is not None:
+            print(
+                f"Best detection below threshold: conf {best_conf:.2%}, "
+                f"threshold {min_confidence:.2%}"
+            )
+        else:
+            print("No detections at all")
         return None
 
     def crop_into_plate(self, frame, x1, y1, x2, y2):
@@ -75,8 +97,15 @@ class PaddleInference:
         if self.debug:
             debug_dir = self.debug_dir or "."
             os.makedirs(debug_dir, exist_ok=True)
-            cv2.imwrite(os.path.join(debug_dir, "debug_plate_upscaled.jpg"), plate_img)
-            cv2.imwrite(os.path.join(debug_dir, "debug_plate_processed.jpg"), processed)
+            debug_id = uuid.uuid4().hex
+            cv2.imwrite(
+                os.path.join(debug_dir, f"debug_plate_{debug_id}_upscaled.jpg"),
+                plate_img,
+            )
+            cv2.imwrite(
+                os.path.join(debug_dir, f"debug_plate_{debug_id}_processed.jpg"),
+                processed,
+            )
 
         return processed
 
@@ -94,10 +123,18 @@ class PaddleInference:
                 all_scores.append(score)
 
         if all_texts:
-            print(f"PLATE TEXT : {' '.join(all_texts)}")
+            text = " ".join(all_texts)
+            confidence = sum(all_scores) / len(all_scores)
+            print(f"PLATE TEXT : {text}")
             for text, score in zip(all_texts, all_scores, strict=False):
                 print(f"  '{text}' — confidence: {score:.2%}")
+            return OCRResult(
+                text=" ".join(all_texts),
+                confidence=confidence,
+                segments=all_texts,
+                segment_confidences=all_scores,
+            )
         else:
             print("Could not read plate text")
 
-        return " ".join(all_texts) if all_texts else None
+        return None
