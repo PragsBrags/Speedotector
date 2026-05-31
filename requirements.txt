@@ -17,6 +17,7 @@ paddleocr==2.8.1
 #database
 SQLAlchemy>=2.0,<3
 pymysql>=1.1,<2
+alembic>=1.13,<2
 
 #webui
 streamlit==1.56.0
