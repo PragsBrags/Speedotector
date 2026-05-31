@@ -1,5 +1,6 @@
 import os
 from ingestion.video_feed import frame
+from ingestion.redlight import TrafficLightDetection
 from ocr.licensePlate import LicensePlateDetection, PaddleInference
 import cv2
 from db.database import SessionLocal, create_tables
@@ -59,8 +60,12 @@ PI = PaddleInference()
 if PI:
     print("Paddle OCR model loaded successfully.")
 
+TLD = TrafficLightDetection(red_ratio_threshold = 0.03)
 try:
-    for frames in frame(cap):
+    for frames, full_frame, traffic_light_rects in frame(cap):
+        if not TLD.is_red(full_frame, traffic_light_rects):
+            continue
+
         coords = LPD.license_coordinates(frames)
         if coords is None:
             continue  # Skip this frame if no plate detected

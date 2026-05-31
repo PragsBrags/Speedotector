@@ -19,7 +19,7 @@ def frame(cap) :
     frames_since_motion = 0
     COOLDOWN_LIMIT = 10
 
-    rects = cropping_selection(cap)
+    rects,traffic_light_selection = cropping_selection(cap)
     if rects is None:
         return
 
@@ -57,7 +57,7 @@ def frame(cap) :
                     frames_since_motion = 0
 
                 if not active_motion and best_frame is not None and frames_since_motion > COOLDOWN_LIMIT:
-                    yield best_frame
+                    yield best_frame, frame.copy(), traffic_light_selection
                     best_frame = None
                     max_score = -1
 

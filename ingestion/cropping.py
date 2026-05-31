@@ -7,6 +7,7 @@ def cropping_selection(cap):
         print("Failed to read video")
         return None
 
+    traffic_light_selection = traffic_light_rect = cv2.selectROI("Select Traffic Light", first_frame, fromCenter=False)
     rects = cv2.selectROIs(window_name, first_frame, fromCenter=False)
     cv2.destroyWindow(window_name)
 
@@ -14,7 +15,7 @@ def cropping_selection(cap):
         print("No ROI selected. Select a region with Space/Enter, then press Escape to continue.")
         return None
 
-    return rects
+    return rects, traffic_light_selection
 
 def ROI_cropping_all_frames(frame, rects):
     # Loop over the selected bounding boxes and crop them
