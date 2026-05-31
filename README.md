@@ -92,7 +92,20 @@ Detection rows store:
 - detector confidence,
 - OCR confidence.
 
-There is no migration framework yet. If you already created database tables before the confidence columns were added, manually migrate the schema or drop/recreate the local tables.
+Alembic manages schema migrations:
+
+```bash
+alembic upgrade head
+```
+
+For an existing database created before Alembic was added, confirm it matches the baseline schema, then run:
+
+```bash
+alembic stamp 20260531_0001
+alembic upgrade head
+```
+
+This stamps the original tables as the baseline and applies the confidence-column migration.
 
 ## Privacy Notes
 
@@ -117,8 +130,12 @@ OCR debug images are disabled by default. If `PaddleInference(debug=True)` is en
 |   `-- repository.py
 |-- models/
 |   `-- license_plate.pt
+|-- migrations/
+|   |-- env.py
+|   `-- versions/
 |-- ocr/
 |   `-- licensePlate.py
+|-- alembic.ini
 |-- tests/
 |-- app.py
 |-- main.py
