@@ -16,7 +16,7 @@ class LicensePlateDetection :
         for result in results:
             for box in result.boxes:
                 conf = float(box.conf)
-                x1, y1, x2, y2 = box.xyxy.numpy()[0]
+                x1, y1, x2, y2 = box.xyxy.cpu().numpy()[0]
                 print(f"Detection | conf: {conf:.2%} | size: {int(x2-x1)}x{int(y2-y1)}px")
 
                 # No threshold — take the highest confidence box
