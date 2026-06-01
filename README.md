@@ -1,13 +1,13 @@
 # Speedotector
 
-Speedotector is a compact Python computer-vision project that detects license plates in video, crops plate regions, and reads the plate text using OCR.
+Speedotector is a motion-triggered ALPR prototype. It selects useful frames from video, detects license plates using YOLO, reads plate text using PaddleOCR, and optionally saves detections.
 
-The demo uses `test2.mp4` (project root), a YOLO license-plate model at `models/license_plate.pt`, OpenCV for video processing, and PaddleOCR for text recognition.
+The demo uses `test_video.mp4` (project root), a YOLO license-plate model at `models/license_plate.pt`, OpenCV for video processing, and PaddleOCR for text recognition.
 
 - `main.py` runs the command-line ALPR pipeline.
 - `app.py` runs a Streamlit web UI for uploading a video, selecting an optional region of interest, and viewing detections.
 
-1. `main.py` opens `test2.mp4` and saves video metadata to the local database.
+1. `main.py` opens `test_video.mp4` and saves video metadata to the local database.
 2. `ingestion/video_feed.py` scans the video and selects useful frames with motion and sharpness checks.
 3. `ocr/licensePlate.py` loads the YOLO model and finds the best license-plate bounding box in each selected frame.
 4. The detected plate region is cropped and lightly preprocessed for OCR.
@@ -97,7 +97,8 @@ Detection rows store:
 - full-frame bounding-box coordinates,
 - crop size,
 - detector confidence,
-- OCR confidence.
+- OCR confidence,
+- creation timestamp.
 
 Alembic manages schema migrations:
 
@@ -112,7 +113,7 @@ alembic stamp 20260531_0001
 alembic upgrade head
 ```
 
-This stamps the original tables as the baseline and applies the confidence-column migration.
+This stamps the original tables as the baseline and applies later detection-column migrations.
 
 ## Privacy Notes
 

@@ -4,8 +4,6 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
-from paddleocr import PaddleOCR
-from ultralytics import YOLO
 
 
 @dataclass(frozen=True)
@@ -24,6 +22,8 @@ class OCRResult:
 
 class LicensePlateDetection:
     def __init__(self, yolo_path):
+        from ultralytics import YOLO
+
         self.model = YOLO(yolo_path)
 
     def license_coordinates(self, frame, min_confidence=0.0):
@@ -75,6 +75,8 @@ class LicensePlateDetection:
 
 class PaddleInference:
     def __init__(self, debug=False, debug_dir=None):
+        from paddleocr import PaddleOCR
+
         self.debug = debug
         self.debug_dir = debug_dir
         self.pipeline = PaddleOCR(use_angle_cls=False, lang="en")
