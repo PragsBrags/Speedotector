@@ -1,0 +1,20 @@
+video:
+  source: test_video.mp4
+  fps: null
+
+models:
+  plate: models/license_plate.pt
+  vehicle: yolov8n.pt
+
+zones: []
+
+traffic_signal:
+  red_confirm_frames: 3
+  min_ratio: 0.02
+
+events:
+  pre_event_frames: 10
+  post_event_frames: 10
+
+output:
+  root: outputs

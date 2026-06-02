@@ -79,6 +79,24 @@ pytest
 
 By default, pipeline results do not include raw image arrays. Streamlit requests `include_images=True` so it can display plate crops.
 
+## Research Branch Additions
+
+This branch also includes the first zone-violation research layer:
+
+- polygon zone definitions and geometry helpers in `ingestion/zones.py`,
+- vehicle detection wrappers in `detection/vehicle.py`,
+- centroid tracking and plate-to-vehicle association in `tracking/`,
+- traffic-signal state detection and violation rules in `rules/`,
+- evidence image/result writing in `evidence/`,
+- experiment metric helpers and paper-table export in `evaluation/`,
+- `zones` and `violations` database tables for evidence records.
+
+Generate Markdown result tables from an experiment JSON file with:
+
+```bash
+python -m evaluation.export_tables --results outputs/results.json --format markdown
+```
+
 ## Streamlit UI
 
 1. Upload a video file (`mp4`, `mov`, `avi`, or `mkv`).
@@ -131,7 +149,27 @@ OCR debug images are disabled by default. If `PaddleInference(debug=True)` is en
 |-- ingestion/
 |   |-- cropping.py
 |   |-- roi.py
+|   |-- zones.py
 |   `-- video_feed.py
+|-- detection/
+|   |-- plate.py
+|   `-- vehicle.py
+|-- tracking/
+|   |-- association.py
+|   `-- centroid_tracker.py
+|-- rules/
+|   |-- base.py
+|   |-- red_light.py
+|   |-- restricted_zone.py
+|   |-- traffic_signal.py
+|   `-- zebra_crossing.py
+|-- evidence/
+|   |-- overlays.py
+|   `-- writer.py
+|-- evaluation/
+|   |-- baselines.py
+|   |-- export_tables.py
+|   `-- metrics.py
 |-- db/
 |   |-- database.py
 |   |-- models.py
