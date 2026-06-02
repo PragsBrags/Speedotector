@@ -90,6 +90,7 @@ This branch also includes the first zone-violation research layer:
 - evidence image/result writing in `evidence/`,
 - experiment metric helpers and paper-table export in `evaluation/`,
 - `zones` and `violations` database tables for evidence records.
+- a Streamlit zone-violation mode for drawing or entering zones, validating rule setup, running detection, and downloading evidence JSON.
 
 Generate Markdown result tables from an experiment JSON file with:
 
@@ -100,10 +101,25 @@ python -m evaluation.export_tables --results outputs/results.json --format markd
 ## Streamlit UI
 
 1. Upload a video file (`mp4`, `mov`, `avi`, or `mkv`).
-2. Keep **Use full frame** checked to process the whole frame, or uncheck it to select a region of interest.
-3. When selecting a region of interest, draw a rectangle on the first-frame canvas or enter exact `x`, `y`, `width`, and `height` values manually.
-4. Choose whether to save detections to the database.
-5. Click **Run detection**.
+2. Choose **ALPR only** or **Zone violation detection**.
+
+In **ALPR only** mode:
+
+1. Keep **Use full frame** checked to process the whole frame, or uncheck it to select a region of interest.
+2. When selecting a region of interest, draw a rectangle on the first-frame canvas or enter exact `x`, `y`, `width`, and `height` values manually.
+3. Choose whether to save detections to the database.
+4. Click **Run detection**.
+
+In **Zone violation detection** mode:
+
+1. Choose violation types: restricted zone, red light, or crosswalk encroachment.
+2. Add zones by drawing on the first-frame canvas or by entering exact coordinates.
+3. Use the setup validation messages to add required zones:
+   - restricted zone requires a forbidden area,
+   - red light requires a traffic light ROI and stop line,
+   - crosswalk encroachment requires a crosswalk zone.
+4. Download the zone configuration JSON if needed.
+5. Run zone detection, then review evidence records and download the results JSON.
 
 Uploaded videos are written to an app-managed temp directory. Replacing or clearing an upload deletes the previous temp file, and the app removes stale `speedotector_streamlit_*` temp directories older than 24 hours on startup.
 
