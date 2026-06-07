@@ -108,6 +108,15 @@ alembic upgrade head
 
 For an existing database created before Alembic was added, confirm it matches the baseline schema, then run:
 
+Create and activate a virtual environment:
+
+```bash
+python3 -m venv venv311
+source venv311/bin/activate
+```
+
+Install dependencies:
+
 ```bash
 alembic stamp 20260531_0001
 alembic upgrade head
