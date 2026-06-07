@@ -21,6 +21,7 @@ alembic>=1.13,<2
 
 #webui
 streamlit==1.56.0
+streamlit-image-annotation==0.8.0
 streamlit-drawable-canvas==0.9.3
 pillow>=10,<12
 

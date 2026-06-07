@@ -7,6 +7,7 @@ from evaluation.baselines import (
 )
 from evaluation.export_tables import load_results, render_markdown_tables
 from evaluation.metrics import compute_metrics
+from evaluation.run_experiment import main as run_experiment_main
 
 
 def test_baseline_frame_selection_helpers():
@@ -70,3 +71,95 @@ def test_export_tables_reads_results_and_renders_markdown(tmp_path):
 
     assert "Table II. Efficiency Comparison" in output
     assert "event_window_alpr" in output
+
+
+def test_run_experiment_writes_paper_methods_with_prediction_metrics(
+    monkeypatch, tmp_path
+):
+    annotation_path = tmp_path / "annotation.json"
+    annotation_path.write_text(
+        json.dumps(
+            {
+                "video_id": "video-1",
+                "video_path": "video.mp4",
+                "fps": 10,
+                "zones": [],
+                "violations": [
+                    {
+                        "id": "v1",
+                        "type": "restricted_zone_violation",
+                        "frame_start": 10,
+                        "frame_end": 12,
+                        "plate_text": "BA12PA3456",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    predictions_path = tmp_path / "predictions.json"
+    predictions_path.write_text(
+        json.dumps(
+            {
+                "methods": [
+                    {
+                        "method": "proposed_event_triggered_motion_selection",
+                        "runtime_seconds": 2.0,
+                        "events": [
+                            {
+                                "violation_type": "restricted_zone_violation",
+                                "frame_number": 11,
+                                "plate_text": "BA12PA3456",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    scored_frames_path = tmp_path / "scores.json"
+    scored_frames_path.write_text(
+        json.dumps({"frames": {"9": 1.0, "10": 5.0, "11": 3.0}}),
+        encoding="utf-8",
+    )
+    motion_frames_path = tmp_path / "motion.json"
+    motion_frames_path.write_text(json.dumps({"frames": [9, 10, 11]}), encoding="utf-8")
+    output_path = tmp_path / "results.json"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run_experiment.py",
+            "--annotation",
+            str(annotation_path),
+            "--total-frames",
+            "20",
+            "--motion-frames",
+            str(motion_frames_path),
+            "--scored-frames",
+            str(scored_frames_path),
+            "--predictions",
+            str(predictions_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    run_experiment_main()
+
+    rows = json.loads(output_path.read_text(encoding="utf-8"))["results"]
+    methods = {row["method"]: row for row in rows}
+
+    assert set(methods) == {
+        "full_frame_alpr",
+        "fixed_skip_10",
+        "motion_triggered_alpr",
+        "event_triggered_alpr",
+        "proposed_event_triggered_motion_selection",
+    }
+    proposed = methods["proposed_event_triggered_motion_selection"]
+    assert proposed["selected_frames"] == 1
+    assert proposed["violation_recall"] == 1.0
+    assert proposed["ocr_accuracy"] == 1.0
+    assert proposed["end_to_end_identification_accuracy"] == 1.0

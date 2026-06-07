@@ -1,3 +1,9 @@
+---
+title: Speedotector
+sdk: docker
+app_port: 7860
+---
+
 # Speedotector
 
 Speedotector is a motion-triggered ALPR prototype. It selects useful frames from video, detects license plates using YOLO, reads plate text using PaddleOCR, and optionally saves detections.
@@ -39,6 +45,52 @@ Stop Docker services with:
 ```bash
 docker compose -f docker/docker-compose.yml down
 ```
+
+## Hugging Face Spaces Deployment
+
+Use a **Docker Space**. The root `Dockerfile` starts the Streamlit app on port `7860`, and the YAML block at the top of this README tells Hugging Face to build it as a Docker Space.
+
+1. Create a Hugging Face account and a write token:
+
+```bash
+pip install -U huggingface_hub
+huggingface-cli login
+```
+
+2. Create a new Space at `https://huggingface.co/new-space`.
+
+Use these settings:
+
+- **Space name:** `speedotector`
+- **SDK:** `Docker`
+- **Visibility:** `Private` while testing, or `Public` for a demo
+- **Hardware:** CPU basic first; upgrade only if OCR/detection is too slow
+
+3. Add the Space as a Git remote. Replace `<hf-username>` with your Hugging Face username.
+
+```bash
+git remote add hf https://huggingface.co/spaces/<hf-username>/speedotector
+```
+
+4. Commit and push the deployment files.
+
+```bash
+git add Dockerfile README.md .dockerignore app.py requirements.txt models/license_plate.pt yolo26n.pt
+git commit -m "chore: add hugging face docker deployment"
+git push hf main
+```
+
+If your current branch is not `main`, push it to the Space `main` branch:
+
+```bash
+git push hf HEAD:main
+```
+
+5. Open the Space build logs in Hugging Face. The first build can take several minutes because PaddleOCR, PaddlePaddle, OpenCV, and Ultralytics are heavy dependencies.
+
+6. After it starts, upload a small video first and keep **Save results to database** disabled. Add database secrets only if you need persistence.
+
+If the app is too slow on free CPU hardware, upgrade the Space hardware or move to a paid x86 VPS/GPU instance.
 
 ## Local Setup
 
@@ -141,6 +193,15 @@ alembic upgrade head
 ```
 
 For an existing database created before Alembic was added, confirm it matches the baseline schema, then run:
+
+Create and activate a virtual environment:
+
+```bash
+python3 -m venv venv311
+source venv311/bin/activate
+```
+
+Install dependencies:
 
 ```bash
 alembic stamp 20260531_0001
