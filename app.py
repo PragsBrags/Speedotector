@@ -123,11 +123,20 @@ def model_path():
     return str(Path(__file__).resolve().parent / "models" / "license_plate.pt")
 
 
-@st.cache_resource
-def load_models(model_path):
-    from ocr.licensePlate import LicensePlateDetection, PaddleInference
+def vehicle_model_path():
+    return "yolo26n.pt"
 
-    return LicensePlateDetection(model_path), PaddleInference()
+
+@st.cache_resource
+def load_models(model_path, vehicle_model_path):
+    from ocr.licensePlate import LicensePlateDetection, PaddleInference
+    from ocr.vehicleDetection import VehicleDetection
+
+    return (
+        VehicleDetection(vehicle_model_path),
+        LicensePlateDetection(model_path),
+        PaddleInference(),
+    )
 
 
 if not st.session_state.get("stale_temp_dirs_cleaned"):
@@ -329,16 +338,21 @@ if uploaded_file:
             progress_text.write(f"Found {len(live_results)} detection(s)...")
 
         try:
-            detector, ocr = load_models(model_path())
-            results = process_video(
-                video_path=video_path,
-                roi=roi,
-                save_to_db=save_to_db,
-                progress_callback=on_result,
-                include_images=True,
-                detector=detector,
-                ocr=ocr,
+            vehicle_detector, plate_detector, ocr = load_models(
+            model_path(),
+            vehicle_model_path(),
             )
+
+            results = process_video(
+    video_path=video_path,
+    roi=roi,
+    save_to_db=save_to_db,
+    progress_callback=on_result,
+    include_images=True,
+    vehicle_detector=vehicle_detector,
+    plate_detector=plate_detector,
+    ocr=ocr,
+)
 
             st.success(f"Finished. Found {len(results)} detection(s).")
 
@@ -353,6 +367,9 @@ if uploaded_file:
                     f"detector {result['detector_confidence']:.2%}, "
                     f"OCR {result['ocr_confidence']:.2%}",
                 )
+                st.write("Vehicle:", result["vehicle_class"])
+                st.write("Vehicle confidence:", f"{result['vehicle_confidence']:.2%}")
+                st.write("Vehicle coordinates:", result["vehicle_coords"])
 
                 plate_img = result["plate_img"]
                 plate_img_rgb = cv2.cvtColor(plate_img, cv2.COLOR_BGR2RGB)
