@@ -1,9 +1,10 @@
 from ultralytics import YOLO
 
-class VehicleDetection :
-    def __init__ (self, yolo_model) :
+
+class VehicleDetection:
+    def __init__(self, yolo_model):
         self.model = YOLO(yolo_model)
-    
+
     def vehicle_coordinates(self, frame, conf_threshold=0.35):
         results = self.model([frame], stream=False)
         detections = []
@@ -31,4 +32,3 @@ class VehicleDetection :
         y2 = min(height, int(y2))
 
         return frame[y1:y2, x1:x2]
-

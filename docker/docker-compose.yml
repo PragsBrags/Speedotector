@@ -11,14 +11,37 @@ services:
       - ../ingestion:/app/ingestion
       - ../ocr:/app/ocr
       - ../db:/app/db
-      - ../src:/app/src
       - ../models:/app/models:ro
       - ../main.py:/app/main.py:ro
+      - ../pipeline.py:/app/pipeline.py:ro
       - ../test_video.mp4:/app/test_video.mp4:ro
     environment:
       PYTHONPATH: /app
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      VIDEO_PATH: /app/test_video.mp4
     command: ["python", "main.py"]
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: readtheroad-web:latest
+    container_name: readtheroad-web
+    ports:
+      - "8501:8501"
+    env_file:
+      - ../.env
+    volumes:
+      - ../ingestion:/app/ingestion
+      - ../ocr:/app/ocr
+      - ../db:/app/db
+      - ../models:/app/models:ro
+      - ../app.py:/app/app.py:ro
+      - ../pipeline.py:/app/pipeline.py:ro
+    environment:
+      PYTHONPATH: /app
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+    command: ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]
 
   lab:
     profiles: ["lab"]
@@ -35,9 +58,9 @@ services:
       - ../ingestion:/app/ingestion
       - ../ocr:/app/ocr
       - ../db:/app/db
-      - ../src:/app/src
       - ../models:/app/models:ro
       - ../main.py:/app/main.py:ro
+      - ../pipeline.py:/app/pipeline.py:ro
       - ../test_video.mp4:/app/test_video.mp4:ro
     environment:
       PYTHONPATH: /app

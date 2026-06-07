@@ -37,5 +37,10 @@ class Detection(Base):
     y2: Mapped[float] = mapped_column(Float, nullable=False)
     crop_width: Mapped[int] = mapped_column(Integer, nullable=False)
     crop_height: Mapped[int] = mapped_column(Integer, nullable=False)
+    detector_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ocr_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
 
     video: Mapped[Video] = relationship("Video", back_populates="detections")

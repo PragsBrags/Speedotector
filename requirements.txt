@@ -1,19 +1,31 @@
 #core
-opencv-python
-ultralytics
+opencv-python>=4.9,<4.11
+ultralytics>=8.0,<9
 
 # Data
-pandas
-numpy
+pandas>=2.0,<3
+numpy>=1.24,<2.0
 
 # Utilities
-tqdm
-python-dotenv
+tqdm>=4.66,<5
+python-dotenv>=1.0,<2
 
 #ocr
 paddlepaddle==2.6.2
 paddleocr==2.8.1
 
 #database
-SQLAlchemy
-pymysql
+SQLAlchemy>=2.0,<3
+pymysql>=1.1,<2
+alembic>=1.13,<2
+
+#webui
+streamlit==1.56.0
+streamlit-drawable-canvas==0.9.3
+pillow>=10,<12
+
+#development
+black>=24,<26
+ruff>=0.5,<1
+pytest>=8,<9
+jupyterlab>=4,<5

@@ -33,10 +33,10 @@ COPY ocr/ ./ocr/
 COPY db/ ./db/
 # COPY src/ ./src/
 COPY models/ ./models/
-COPY main.py test_video.mp4 ./
+COPY app.py main.py pipeline.py test_video.mp4 ./
 
-# Document the Jupyter port used when the command is overridden for lab work.
-EXPOSE 8888
+# Document the Streamlit and Jupyter ports used by compose services.
+EXPOSE 8501 8888
 
 # Run the license-plate OCR pipeline by default.
 CMD ["python", "main.py"]
