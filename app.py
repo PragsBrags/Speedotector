@@ -127,17 +127,25 @@ def vehicle_model_path():
     return "yolo26n.pt"
 
 
-@st.cache_resource
-def load_models(model_path, vehicle_model_path):
-    from ocr.licensePlate import LicensePlateDetection, PaddleInference
+@st.cache_resource(show_spinner=False)
+def load_vehicle_detector(vehicle_model_path):
     from ocr.vehicleDetection import VehicleDetection
 
-    return (
-        VehicleDetection(vehicle_model_path),
-        LicensePlateDetection(model_path),
-        PaddleInference(),
-    )
+    return VehicleDetection(vehicle_model_path)
 
+
+@st.cache_resource(show_spinner=False)
+def load_plate_detector(model_path):
+    from ocr.licensePlate import LicensePlateDetection
+
+    return LicensePlateDetection(model_path)
+
+
+@st.cache_resource(show_spinner=False)
+def load_ocr():
+    from ocr.licensePlate import PaddleInference
+
+    return PaddleInference()
 
 if not st.session_state.get("stale_temp_dirs_cleaned"):
     cleanup_stale_temp_dirs()
