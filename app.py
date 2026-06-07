@@ -339,20 +339,20 @@ if uploaded_file:
 
         try:
             vehicle_detector, plate_detector, ocr = load_models(
-            model_path(),
-            vehicle_model_path(),
+                model_path(),
+                vehicle_model_path(),
             )
 
             results = process_video(
-    video_path=video_path,
-    roi=roi,
-    save_to_db=save_to_db,
-    progress_callback=on_result,
-    include_images=True,
-    vehicle_detector=vehicle_detector,
-    plate_detector=plate_detector,
-    ocr=ocr,
-)
+                video_path=video_path,
+                roi=roi,
+                save_to_db=save_to_db,
+                progress_callback=on_result,
+                include_images=True,
+                vehicle_detector=vehicle_detector,
+                plate_detector=plate_detector,
+                ocr=ocr,
+            )
 
             st.success(f"Finished. Found {len(results)} detection(s).")
 
