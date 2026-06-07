@@ -64,10 +64,6 @@ class PaddleInference :
         # Convert back to BGR
         processed = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
         
-        # Save debug images
-        cv2.imwrite("debug_plate_upscaled.jpg", plate_img)
-        cv2.imwrite("debug_plate_processed.jpg", processed)
-        
         return processed
 
     def ocr_inference(self, plate_img):

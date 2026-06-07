@@ -1,5 +1,6 @@
 import os
 from ingestion.video_feed import frame
+from ocr.vehicleDetection import VehicleDetection
 from ocr.licensePlate import LicensePlateDetection, PaddleInference
 import cv2
 from db.database import SessionLocal, create_tables
@@ -37,8 +38,9 @@ def save_detection(db, video_id, plate_text, coords, plate_img):
     return detection
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
+vehicle_model_path = 'yolo26n.pt'
 model_path = os.path.join(script_dir, 'models/license_plate.pt')
-video_path = os.path.join(script_dir, 'test2.mp4')
+video_path = os.path.join(script_dir, 'test_video.mp4')
 
 cap = cv2.VideoCapture(video_path)
 if not cap.isOpened():
@@ -52,6 +54,9 @@ db = SessionLocal()
 video = save_video(db, video_path)
 print(f"Video saved to database with id: {video.id}")
 
+VD = VehicleDetection(vehicle_model_path)
+if VD :
+    print("Vehicle Detection model loaded successfully.")
 LPD = LicensePlateDetection(model_path)
 if LPD :
     print("License Plate Detection model loaded successfully.")
@@ -61,21 +66,38 @@ if PI:
 
 try:
     for frames in frame(cap):
-        coords = LPD.license_coordinates(frames)
-        if coords is None:
-            continue  # Skip this frame if no plate detected
+        vehicles = VD.vehicle_coordinates(frames)
+        if not vehicles:
+            continue
 
-        x1, y1, x2, y2 = coords
+        for vehicle_class, vehicle_conf, vx1, vy1, vx2, vy2 in vehicles:
+            vehicle_x_offset = max(0, int(vx1))
+            vehicle_y_offset = max(0, int(vy1))
+            vehicle_crop = VD.crop_vehicle(frames, vx1, vy1, vx2, vy2)
+            if vehicle_crop.size == 0:
+                continue
 
-        plate_img = LPD.crop_into_plate(frames, x1, y1, x2, y2)
-        print(f"Plate crop size: {plate_img.shape[1]}x{plate_img.shape[0]}px")
-        res = PI.ocr_inference(plate_img)
-        if res:
-            print("OCR result:\n",res)
-            detection = save_detection(db, video.id, res, coords, plate_img)
-            print(f"Detection saved to database with id: {detection.id}")
-        else:
-            print("OCR returned None")
+            coords = LPD.license_coordinates(vehicle_crop)
+            if coords is None:
+                continue
+
+            x1, y1, x2, y2 = coords
+
+            plate_img = LPD.crop_into_plate(vehicle_crop, x1, y1, x2, y2)
+            print(f"Plate crop size: {plate_img.shape[1]}x{plate_img.shape[0]}px")
+            res = PI.ocr_inference(plate_img)
+            if res:
+                frame_coords = (
+                    vehicle_x_offset + x1,
+                    vehicle_y_offset + y1,
+                    vehicle_x_offset + x2,
+                    vehicle_y_offset + y2,
+                )
+                print(f"OCR result for {vehicle_class} ({vehicle_conf:.2%}):\n",res)
+                detection = save_detection(db, video.id, res, frame_coords, plate_img)
+                print(f"Detection saved to database with id: {detection.id}")
+            else:
+                print("OCR returned None")
 finally:
     db.close()
     cap.release()
