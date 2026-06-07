@@ -10,8 +10,8 @@ import streamlit.elements.image as st_image
 from streamlit.elements.lib import image_utils
 from streamlit.elements.lib.layout_utils import LayoutConfig
 
+import pipeline
 from ingestion.roi import clamp_roi
-from pipeline import process_video
 
 os.environ.setdefault(
     "MPLCONFIGDIR",
@@ -219,6 +219,8 @@ def load_ocr():
 
 def empty_run_summary():
     return {
+        "raw_frames_scanned": 0,
+        "raw_frames_total": 0,
         "selected_frames_processed": 0,
         "vehicles_seen": 0,
         "plates_detected": 0,
@@ -269,13 +271,40 @@ def roi_crop(frame_rgb, roi):
 def render_run_summary(target):
     summary = st.session_state.get("run_summary") or empty_run_summary()
     with target.container():
-        cols = st.columns(6)
-        cols[0].metric("Frames", summary["selected_frames_processed"])
-        cols[1].metric("Vehicles", summary["vehicles_seen"])
-        cols[2].metric("Plates", summary["plates_detected"])
-        cols[3].metric("OCR runs", summary["ocr_attempts"])
-        cols[4].metric("OCR OK", summary["ocr_successes"])
-        cols[5].metric("Detections", summary["detections_found"])
+        cols = st.columns(7)
+        raw_total = summary.get("raw_frames_total", 0)
+        raw_value = summary.get("raw_frames_scanned", 0)
+        raw_label = f"{raw_value}/{raw_total}" if raw_total else raw_value
+        cols[0].metric("Raw frames", raw_label)
+        cols[1].metric("Selected frames", summary["selected_frames_processed"])
+        cols[2].metric("Vehicles", summary["vehicles_seen"])
+        cols[3].metric("Plates", summary["plates_detected"])
+        cols[4].metric("OCR runs", summary["ocr_attempts"])
+        cols[5].metric("OCR OK", summary["ocr_successes"])
+        cols[6].metric("Detections", summary["detections_found"])
+
+
+def render_scan_progress(target):
+    summary = st.session_state.get("run_summary") or empty_run_summary()
+    raw_frames_scanned = int(summary.get("raw_frames_scanned", 0))
+    raw_frames_total = int(summary.get("raw_frames_total", 0))
+
+    if raw_frames_total > 0:
+        progress = min(raw_frames_scanned / raw_frames_total, 1.0)
+        target.progress(
+            progress,
+            text=(
+                "Scanning video frames: "
+                f"{raw_frames_scanned} / {raw_frames_total} raw frames"
+            ),
+        )
+    elif raw_frames_scanned > 0:
+        target.progress(
+            0,
+            text=f"Scanning video frames: {raw_frames_scanned} raw frames",
+        )
+    else:
+        target.empty()
 
 
 def render_processing_log(target):
@@ -536,6 +565,7 @@ if has_video:
 
     st.subheader("Processing status")
     status_placeholder = st.empty()
+    scan_progress_placeholder = st.empty()
     summary_placeholder = st.empty()
     with st.expander("Detailed processing log", expanded=False):
         log_placeholder = st.empty()
@@ -544,6 +574,7 @@ if has_video:
         status_placeholder.info(st.session_state["last_status"])
     else:
         status_placeholder.caption("Ready to run detection.")
+    render_scan_progress(scan_progress_placeholder)
     render_run_summary(summary_placeholder)
     render_processing_log(log_placeholder)
 
@@ -557,6 +588,7 @@ if has_video:
         st.session_state["last_status"] = "Loading models..."
         st.session_state["last_ui_status_update"] = 0.0
         status_placeholder.info("Loading models...")
+        render_scan_progress(scan_progress_placeholder)
         render_run_summary(summary_placeholder)
         render_processing_log(log_placeholder)
 
@@ -570,6 +602,7 @@ if has_video:
             status_placeholder.info(
                 st.session_state.get("last_status", "Processing...")
             )
+            render_scan_progress(scan_progress_placeholder)
             render_run_summary(summary_placeholder)
             render_processing_log(log_placeholder)
 
@@ -577,6 +610,62 @@ if has_video:
             print(message, flush=True)
             append_processing_log(message)
             refresh_processing_ui(force=force)
+
+        def record_raw_scan_progress(frames_scanned, total_frames, force=False):
+            summary = st.session_state.setdefault("run_summary", empty_run_summary())
+            summary["raw_frames_scanned"] = max(
+                int(summary.get("raw_frames_scanned", 0)),
+                int(frames_scanned),
+            )
+            summary["raw_frames_total"] = max(
+                int(summary.get("raw_frames_total", 0)),
+                int(total_frames or 0),
+            )
+            refresh_processing_ui(force=force)
+
+        def wrap_selected_frames_with_raw_progress(original_selected_frames):
+            def selected_frames_with_raw_progress(cap, roi=None):
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+
+                class ProgressCapture:
+                    def __init__(self, wrapped_cap):
+                        self._wrapped_cap = wrapped_cap
+                        self.frames_scanned = 0
+
+                    def read(self):
+                        ret, frame = self._wrapped_cap.read()
+                        if ret:
+                            self.frames_scanned += 1
+                            if (
+                                self.frames_scanned == 1
+                                or self.frames_scanned % 15 == 0
+                            ):
+                                record_raw_scan_progress(
+                                    self.frames_scanned,
+                                    total_frames,
+                                )
+                        else:
+                            record_raw_scan_progress(
+                                self.frames_scanned,
+                                total_frames,
+                                force=True,
+                            )
+                        return ret, frame
+
+                    def __getattr__(self, name):
+                        return getattr(self._wrapped_cap, name)
+
+                progress_cap = ProgressCapture(cap)
+                try:
+                    yield from original_selected_frames(progress_cap, roi=roi)
+                finally:
+                    record_raw_scan_progress(
+                        progress_cap.frames_scanned,
+                        total_frames,
+                        force=True,
+                    )
+
+            return selected_frames_with_raw_progress
 
         record_status("Loading vehicle detector...", force=True)
         live_results = []
@@ -623,20 +712,27 @@ if has_video:
                 ocr = load_ocr()
 
                 record_status("Models loaded", force=True)
-                record_status("Scanning video frames...", force=True)
+                record_status("Preparing video scan...", force=True)
                 status.update(label="Models loaded", state="complete")
 
-            results = process_video(
-                video_path=video_path,
-                roi=roi,
-                save_to_db=save_to_db,
-                progress_callback=on_result,
-                include_images=True,
-                vehicle_detector=vehicle_detector,
-                plate_detector=plate_detector,
-                ocr=ocr,
-                status_callback=on_status,
+            original_selected_frames = pipeline.selected_frames
+            pipeline.selected_frames = wrap_selected_frames_with_raw_progress(
+                original_selected_frames
             )
+            try:
+                results = pipeline.process_video(
+                    video_path=video_path,
+                    roi=roi,
+                    save_to_db=save_to_db,
+                    progress_callback=on_result,
+                    include_images=True,
+                    vehicle_detector=vehicle_detector,
+                    plate_detector=plate_detector,
+                    ocr=ocr,
+                    status_callback=on_status,
+                )
+            finally:
+                pipeline.selected_frames = original_selected_frames
 
             st.session_state["results"] = results
             st.session_state["run_summary"]["detections_found"] = len(results)
