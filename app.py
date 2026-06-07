@@ -346,10 +346,17 @@ if uploaded_file:
             progress_text.write(f"Found {len(live_results)} detection(s)...")
 
         try:
-            vehicle_detector, plate_detector, ocr = load_models(
-                model_path(),
-                vehicle_model_path(),
-            )
+            with st.status("Loading models...", expanded=True) as status:
+                 st.write("Loading vehicle detector...")
+                 vehicle_detector = load_vehicle_detector(vehicle_model_path())
+
+                 st.write("Loading license plate detector...")
+                 plate_detector = load_plate_detector(model_path())
+
+                 st.write("Loading OCR model...")
+                 ocr = load_ocr()
+
+                 status.update(label="Models loaded", state="complete")
 
             results = process_video(
                 video_path=video_path,
