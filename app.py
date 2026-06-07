@@ -196,6 +196,16 @@ def vehicle_model_path():
     return "yolo26n.pt"
 
 
+def database_configured():
+    return bool(
+        os.getenv("DATABASE_URL")
+        or os.getenv("DB_HOST")
+        or os.getenv("DB_USER")
+        or os.getenv("DB_PASSWORD")
+        or os.getenv("DB_NAME")
+    )
+
+
 @st.cache_resource(show_spinner=False)
 def load_vehicle_detector(vehicle_model_path):
     from ocr.vehicleDetection import VehicleDetection
@@ -415,6 +425,7 @@ has_video = video_path is not None
 
 with st.sidebar:
     st.header("Settings")
+    has_database_config = database_configured()
     use_full_frame = st.checkbox(
         "Use full frame",
         value=False,
@@ -423,7 +434,12 @@ with st.sidebar:
     save_to_db = st.checkbox(
         "Save results to database",
         value=False,
-        help="If unchecked, detections are shown only in this session and no database connection is required.",
+        disabled=not has_database_config,
+        help=(
+            "Configure DATABASE_URL or DB_* environment variables to enable persistence."
+            if not has_database_config
+            else "If unchecked, detections are shown only in this session and no database connection is required."
+        ),
     )
     run_detection = st.button("Run detection", disabled=not has_video, type="primary")
     clear_upload = st.button("Clear uploaded video", disabled=not has_video)
