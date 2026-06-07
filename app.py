@@ -7,44 +7,45 @@ from pathlib import Path
 import cv2
 import streamlit as st
 import streamlit.elements.image as st_image
-from PIL import Image
 from streamlit.elements.lib import image_utils
 from streamlit.elements.lib.layout_utils import LayoutConfig
 
-if not hasattr(st_image, "image_to_url"):
-
-    def image_to_url(
-        image,
-        width=None,
-        clamp=True,
-        channels="RGB",
-        output_format="PNG",
-        image_id="image",
-    ):
-        try:
-            return image_utils.image_to_url(
-                image,
-                LayoutConfig(width=width),
-                clamp,
-                channels,
-                output_format,
-                image_id,
-            )
-        except TypeError as exc:
-            raise RuntimeError(
-                "streamlit-drawable-canvas is incompatible with this Streamlit "
-                "version. Install the pinned versions from requirements.txt."
-            ) from exc
-
-    st_image.image_to_url = image_to_url
-
-try:
-    from streamlit_drawable_canvas import st_canvas
-except ImportError:
-    st_canvas = None
-
 from ingestion.roi import clamp_roi
 from pipeline import process_video
+
+os.environ.setdefault(
+    "MPLCONFIGDIR",
+    str(Path(tempfile.gettempdir()) / "speedotector_matplotlib"),
+)
+
+
+def image_to_url(
+    image,
+    width=None,
+    clamp=True,
+    channels="RGB",
+    output_format="PNG",
+    image_id="image",
+):
+    layout_config = (
+        width if isinstance(width, LayoutConfig) else LayoutConfig(width=width)
+    )
+    return image_utils.image_to_url(
+        image,
+        layout_config,
+        clamp,
+        channels,
+        output_format,
+        image_id,
+    )
+
+
+st_image.image_to_url = image_to_url
+
+import streamlit_image_annotation.Detection as detection_module  # noqa: E402
+
+detection_module.image_to_url = image_to_url
+detection = detection_module.detection
 
 st.set_page_config(page_title="Speedotector", layout="wide")
 
@@ -79,12 +80,16 @@ st.markdown(
 TEMP_DIR_PREFIX = "speedotector_streamlit_"
 STALE_TEMP_DIR_SECONDS = 24 * 60 * 60
 MAX_LOG_LINES = 100
+ROI_LABEL = "ROI"
+ROI_SELECTOR_MAX_WIDTH = 760
+ROI_SELECTOR_MAX_HEIGHT = 560
 UPLOAD_STATE_KEYS = ("video_path", "video_temp_dir", "upload_signature")
 DETECTION_STATE_KEYS = (
     "roi_x",
     "roi_y",
     "roi_w",
     "roi_h",
+    "roi_selected",
     "results",
     "processing_logs",
     "run_summary",
@@ -163,7 +168,6 @@ def reset_upload_state(queue_cleanup=True):
 
     reset_detection_state()
     st.session_state["uploader_key"] += 1
-    st.session_state["canvas_key_version"] += 1
 
 
 def write_uploaded_video(uploaded_file):
@@ -172,7 +176,6 @@ def write_uploaded_video(uploaded_file):
         st.session_state.get("video_temp_dir"),
     )
     reset_detection_state()
-    st.session_state["canvas_key_version"] += 1
 
     suffix = Path(uploaded_file.name).suffix
     temp_dir = tempfile.mkdtemp(prefix=TEMP_DIR_PREFIX)
@@ -244,6 +247,25 @@ def format_coords(coords):
     return ", ".join(str(int(value)) for value in coords)
 
 
+def default_roi(frame_width, frame_height):
+    width = max(1, int(frame_width * 0.45))
+    height = max(1, int(frame_height * 0.35))
+    x = max(0, int((frame_width - width) / 2))
+    y = max(0, int((frame_height - height) / 2))
+    return (x, y, width, height)
+
+
+def roi_area_percent(roi, frame_width, frame_height):
+    _, _, roi_width, roi_height = roi
+    frame_area = max(1, frame_width * frame_height)
+    return (roi_width * roi_height / frame_area) * 100
+
+
+def roi_crop(frame_rgb, roi):
+    x, y, width, height = roi
+    return frame_rgb[y : y + height, x : x + width]
+
+
 def render_run_summary(target):
     summary = st.session_state.get("run_summary") or empty_run_summary()
     with target.container():
@@ -311,9 +333,6 @@ if not st.session_state.get("stale_temp_dirs_cleaned"):
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = 0
 
-if "canvas_key_version" not in st.session_state:
-    st.session_state["canvas_key_version"] = 0
-
 if "run_summary" not in st.session_state:
     st.session_state["run_summary"] = empty_run_summary()
 
@@ -367,7 +386,11 @@ has_video = video_path is not None
 
 with st.sidebar:
     st.header("Settings")
-    use_full_frame = st.checkbox("Use full frame", value=True)
+    use_full_frame = st.checkbox(
+        "Use full frame",
+        value=False,
+        help="CLI mode asks you to select an ROI. Leave this off to match that behavior.",
+    )
     save_to_db = st.checkbox(
         "Save results to database",
         value=False,
@@ -396,36 +419,48 @@ if has_video:
 
     if use_full_frame:
         roi = (0, 0, w, h)
+        st.session_state["roi_selected"] = True
     else:
         if "roi_x" not in st.session_state:
-            update_roi_state((0, 0, w, h))
+            update_roi_state(default_roi(w, h))
+            st.session_state["roi_selected"] = False
         else:
             update_roi_state(clamp_roi(*roi_state(), w, h))
 
-        control_col, canvas_col = st.columns([1, 2.2], vertical_alignment="top")
+        st.caption("Exact coordinates")
+        x_col, y_col, width_col, height_col, action_col, status_col = st.columns(
+            [1, 1, 1, 1, 0.8, 1.4],
+            vertical_alignment="bottom",
+        )
 
-        with control_col:
-            st.caption("Exact coordinates")
+        with x_col:
             x = st.number_input(
                 "X",
                 min_value=0,
                 max_value=w - 1,
                 value=st.session_state["roi_x"],
             )
+
+        with y_col:
             y = st.number_input(
                 "Y",
                 min_value=0,
                 max_value=h - 1,
                 value=st.session_state["roi_y"],
             )
-            roi_w = min(st.session_state["roi_w"], w - int(x))
-            roi_h = min(st.session_state["roi_h"], h - int(y))
+
+        roi_w = min(st.session_state["roi_w"], w - int(x))
+        roi_h = min(st.session_state["roi_h"], h - int(y))
+
+        with width_col:
             roi_w = st.number_input(
                 "Width",
                 min_value=1,
                 max_value=w - int(x),
                 value=roi_w,
             )
+
+        with height_col:
             roi_h = st.number_input(
                 "Height",
                 min_value=1,
@@ -433,72 +468,61 @@ if has_video:
                 value=roi_h,
             )
 
-            manual_roi = clamp_roi(x, y, roi_w, roi_h, w, h)
-            if manual_roi != roi_state():
-                update_roi_state(manual_roi)
+        manual_roi = clamp_roi(x, y, roi_w, roi_h, w, h)
+        if manual_roi != roi_state():
+            update_roi_state(manual_roi)
+            st.session_state["roi_selected"] = True
 
-        with canvas_col:
-            max_canvas_width = 980
-            max_canvas_height = 520
-            scale = min(max_canvas_width / w, max_canvas_height / h, 1)
-            canvas_width = int(w * scale)
-            canvas_height = int(h * scale)
-            canvas_image = Image.fromarray(first_frame_rgb).resize(
-                (canvas_width, canvas_height)
-            )
-            current_roi = roi_state()
+        with action_col:
+            if st.button("Confirm ROI"):
+                st.session_state["roi_selected"] = True
 
-            if st_canvas is None:
-                st.error(
-                    "Install streamlit-drawable-canvas to draw ROI boxes: pip install streamlit-drawable-canvas"
-                )
-                st.image(canvas_image, caption="ROI selector unavailable")
+        current_area = roi_area_percent(roi_state(), w, h)
+        with status_col:
+            if st.session_state.get("roi_selected"):
+                st.success(f"Selected ({current_area:.1f}% of frame).")
             else:
-                initial_drawing = {
-                    "version": "4.4.0",
-                    "objects": [
-                        {
-                            "type": "rect",
-                            "left": current_roi[0] * scale,
-                            "top": current_roi[1] * scale,
-                            "width": current_roi[2] * scale,
-                            "height": current_roi[3] * scale,
-                            "fill": "rgba(255, 75, 75, 0.18)",
-                            "stroke": "#ff4b4b",
-                            "strokeWidth": 3,
-                        }
-                    ],
-                }
+                st.warning("Select or confirm ROI.")
 
-                canvas_result = st_canvas(
-                    fill_color="rgba(255, 75, 75, 0.18)",
-                    stroke_width=3,
-                    stroke_color="#ff4b4b",
-                    background_image=canvas_image,
-                    update_streamlit=True,
-                    height=canvas_height,
-                    width=canvas_width,
-                    drawing_mode="rect",
-                    initial_drawing=initial_drawing,
-                    key=f"roi_canvas_{st.session_state['canvas_key_version']}",
+        roi = roi_state()
+        selector_col, crop_col = st.columns([2.1, 1], vertical_alignment="top")
+
+        with selector_col:
+            annotated_boxes = detection(
+                image_path=first_frame_rgb,
+                label_list=[ROI_LABEL],
+                bboxes=[list(roi)],
+                labels=[0],
+                width=ROI_SELECTOR_MAX_WIDTH,
+                height=ROI_SELECTOR_MAX_HEIGHT,
+                line_width=3,
+                use_space=True,
+                key=f"roi_annotation_{upload_signature[0]}_{upload_signature[1]}",
+            )
+
+            if isinstance(annotated_boxes, list) and annotated_boxes:
+                latest_box = annotated_boxes[-1]["bbox"]
+                annotation_roi = clamp_roi(
+                    latest_box[0],
+                    latest_box[1],
+                    latest_box[2],
+                    latest_box[3],
+                    w,
+                    h,
                 )
+                if annotation_roi != roi_state():
+                    update_roi_state(annotation_roi)
+                    st.session_state["roi_selected"] = True
+                    roi = annotation_roi
 
-                if canvas_result.json_data and canvas_result.json_data["objects"]:
-                    selected_box = canvas_result.json_data["objects"][-1]
-                    canvas_roi = clamp_roi(
-                        selected_box["left"] / scale,
-                        selected_box["top"] / scale,
-                        selected_box["width"] * selected_box["scaleX"] / scale,
-                        selected_box["height"] * selected_box["scaleY"] / scale,
-                        w,
-                        h,
-                    )
-                    if canvas_roi != roi_state():
-                        update_roi_state(canvas_roi)
-                        st.rerun()
-
-            roi = roi_state()
             st.caption(f"ROI: x={roi[0]}, y={roi[1]}, width={roi[2]}, height={roi[3]}")
+
+        with crop_col:
+            st.image(
+                roi_crop(first_frame_rgb, roi),
+                caption="Selected ROI crop",
+                use_container_width=True,
+            )
 
     if use_full_frame:
         st.image(
@@ -523,22 +547,38 @@ if has_video:
     render_run_summary(summary_placeholder)
     render_processing_log(log_placeholder)
 
-    if run_detection:
+    if run_detection and not st.session_state.get("roi_selected"):
+        st.error("Select or confirm an ROI first. This matches the CLI ROI step.")
+
+    if run_detection and st.session_state.get("roi_selected"):
         st.session_state["results"] = []
         st.session_state["processing_logs"] = []
         st.session_state["run_summary"] = empty_run_summary()
         st.session_state["last_status"] = "Loading models..."
+        st.session_state["last_ui_status_update"] = 0.0
         status_placeholder.info("Loading models...")
         render_run_summary(summary_placeholder)
         render_processing_log(log_placeholder)
 
-        def record_status(message):
-            print(message, flush=True)
-            append_processing_log(message)
-            status_placeholder.info(message)
+        def refresh_processing_ui(force=False):
+            now = time.monotonic()
+            last_update = st.session_state.get("last_ui_status_update", 0.0)
+            if not force and now - last_update < 0.5:
+                return
+
+            st.session_state["last_ui_status_update"] = now
+            status_placeholder.info(
+                st.session_state.get("last_status", "Processing...")
+            )
+            render_run_summary(summary_placeholder)
             render_processing_log(log_placeholder)
 
-        record_status("Loading vehicle detector...")
+        def record_status(message, force=False):
+            print(message, flush=True)
+            append_processing_log(message)
+            refresh_processing_ui(force=force)
+
+        record_status("Loading vehicle detector...", force=True)
         live_results = []
 
         def on_result(result):
@@ -567,25 +607,23 @@ if has_video:
                 )
 
             append_processing_log(message)
-            status_placeholder.info(message)
-            render_run_summary(summary_placeholder)
-            render_processing_log(log_placeholder)
+            refresh_processing_ui(force=event in {"detection_succeeded", "ocr_failed"})
 
         try:
             with st.status("Loading models...", expanded=True) as status:
                 st.write("Loading vehicle detector...")
                 vehicle_detector = load_vehicle_detector(vehicle_model_path())
 
-                record_status("Loading license plate detector...")
+                record_status("Loading license plate detector...", force=True)
                 st.write("Loading license plate detector...")
                 plate_detector = load_plate_detector(model_path())
 
-                record_status("Loading OCR model...")
+                record_status("Loading OCR model...", force=True)
                 st.write("Loading OCR model...")
                 ocr = load_ocr()
 
-                record_status("Models loaded")
-                record_status("Scanning video frames...")
+                record_status("Models loaded", force=True)
+                record_status("Scanning video frames...", force=True)
                 status.update(label="Models loaded", state="complete")
 
             results = process_video(
