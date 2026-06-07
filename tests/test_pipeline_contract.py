@@ -223,3 +223,62 @@ def test_process_video_calls_progress_callback(monkeypatch):
 
     assert len(results) == 1
     assert callback_results == results
+
+
+def test_process_video_reports_status_events(monkeypatch):
+    setup_pipeline_fakes(monkeypatch)
+
+    status_events = []
+
+    results = pipeline.process_video(
+        "fake.mp4",
+        roi=(5, 7, 30, 20),
+        save_to_db=False,
+        vehicle_detector=FakeVehicleDetector(),
+        plate_detector=FakePlateDetector(),
+        ocr=FakeOCR(),
+        min_detection_confidence=0.25,
+        status_callback=status_events.append,
+    )
+
+    assert len(results) == 1
+    assert [event["event"] for event in status_events] == [
+        "frame_started",
+        "vehicles_detected",
+        "plate_detection_started",
+        "plate_detected",
+        "ocr_started",
+        "detection_succeeded",
+    ]
+    assert status_events[0]["frame_index"] == 0
+    assert status_events[0]["source_frame_number"] == 4
+    assert status_events[1]["vehicle_count"] == 1
+    assert status_events[-1]["plate_text"] == "BA 12 PA 3456"
+
+
+def test_process_video_reports_no_vehicle_status(monkeypatch):
+    setup_pipeline_fakes(monkeypatch)
+
+    class NoVehicleDetector:
+        def vehicle_coordinates(self, frame, conf_threshold=0.35):
+            return []
+
+    status_events = []
+
+    results = pipeline.process_video(
+        "fake.mp4",
+        roi=(5, 7, 30, 20),
+        save_to_db=False,
+        vehicle_detector=NoVehicleDetector(),
+        plate_detector=FakePlateDetector(),
+        ocr=FakeOCR(),
+        min_detection_confidence=0.25,
+        status_callback=status_events.append,
+    )
+
+    assert results == []
+    assert [event["event"] for event in status_events] == [
+        "frame_started",
+        "vehicles_detected",
+        "no_vehicles",
+    ]

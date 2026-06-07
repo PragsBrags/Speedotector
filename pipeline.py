@@ -17,8 +17,15 @@ def process_video(
     plate_detector=None,
     ocr=None,
     min_detection_confidence=0.0,
+    status_callback=None,
 ):
     script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    def emit_status(event, message, **data):
+        payload = {"event": event, "message": message, **data}
+        print(message, flush=True)
+        if status_callback:
+            status_callback(payload)
 
     if model_path is None:
         model_path = os.path.join(script_dir, "models", "license_plate.pt")
@@ -57,6 +64,15 @@ def process_video(
         for index, selected_frame in enumerate(selected_frames(cap, roi=roi)):
             frame_image = selected_frame["image"]
             roi_x, roi_y, _, _ = selected_frame["roi"]
+            source_frame_number = selected_frame["frame_number"]
+
+            emit_status(
+                "frame_started",
+                (f"Frame {index + 1}: scanning source frame {source_frame_number}."),
+                frame_index=index,
+                source_frame_number=source_frame_number,
+                roi=selected_frame["roi"],
+            )
 
             frame_metadata = {
                 key: value
@@ -65,13 +81,51 @@ def process_video(
             }
 
             vehicles = vehicle_detector.vehicle_coordinates(frame_image)
+            vehicle_count = len(vehicles)
+            emit_status(
+                "vehicles_detected",
+                (
+                    f"Frame {index + 1}: found {vehicle_count} vehicle"
+                    f"{'' if vehicle_count == 1 else 's'}."
+                ),
+                frame_index=index,
+                source_frame_number=source_frame_number,
+                vehicle_count=vehicle_count,
+            )
 
             if not vehicles:
+                emit_status(
+                    "no_vehicles",
+                    f"Frame {index + 1}: no vehicles found; skipping plate detection.",
+                    frame_index=index,
+                    source_frame_number=source_frame_number,
+                )
                 continue
 
-            for vehicle_class, vehicle_confidence, vx1, vy1, vx2, vy2 in vehicles:
+            for vehicle_index, (
+                vehicle_class,
+                vehicle_confidence,
+                vx1,
+                vy1,
+                vx2,
+                vy2,
+            ) in enumerate(vehicles, start=1):
                 vehicle_x_offset = max(0, int(vx1))
                 vehicle_y_offset = max(0, int(vy1))
+
+                emit_status(
+                    "plate_detection_started",
+                    (
+                        f"Frame {index + 1}, vehicle {vehicle_index}: "
+                        f"checking {vehicle_class} for a plate."
+                    ),
+                    frame_index=index,
+                    source_frame_number=source_frame_number,
+                    vehicle_index=vehicle_index,
+                    vehicle_class=vehicle_class,
+                    vehicle_confidence=vehicle_confidence,
+                    vehicle_coords=(vx1, vy1, vx2, vy2),
+                )
 
                 vehicle_crop = vehicle_detector.crop_vehicle(
                     frame_image,
@@ -82,6 +136,16 @@ def process_video(
                 )
 
                 if vehicle_crop.size == 0:
+                    emit_status(
+                        "vehicle_crop_empty",
+                        (
+                            f"Frame {index + 1}, vehicle {vehicle_index}: "
+                            "vehicle crop was empty; skipping."
+                        ),
+                        frame_index=index,
+                        source_frame_number=source_frame_number,
+                        vehicle_index=vehicle_index,
+                    )
                     continue
 
                 detection_result = plate_detector.license_coordinates(
@@ -90,11 +154,33 @@ def process_video(
                 )
 
                 if detection_result is None:
+                    emit_status(
+                        "no_plate_detected",
+                        (
+                            f"Frame {index + 1}, vehicle {vehicle_index}: "
+                            "no plate detected."
+                        ),
+                        frame_index=index,
+                        source_frame_number=source_frame_number,
+                        vehicle_index=vehicle_index,
+                    )
                     continue
 
                 roi_plate_coords = detection_result.coords
                 detector_confidence = detection_result.confidence
                 x1, y1, x2, y2 = roi_plate_coords
+                emit_status(
+                    "plate_detected",
+                    (
+                        f"Frame {index + 1}, vehicle {vehicle_index}: "
+                        f"plate detected at {roi_plate_coords}."
+                    ),
+                    frame_index=index,
+                    source_frame_number=source_frame_number,
+                    vehicle_index=vehicle_index,
+                    roi_plate_coords=roi_plate_coords,
+                    detector_confidence=detector_confidence,
+                )
 
                 plate_img = plate_detector.crop_into_plate(
                     vehicle_crop,
@@ -104,9 +190,23 @@ def process_video(
                     y2,
                 )
 
+                emit_status(
+                    "ocr_started",
+                    f"Frame {index + 1}, vehicle {vehicle_index}: running OCR.",
+                    frame_index=index,
+                    source_frame_number=source_frame_number,
+                    vehicle_index=vehicle_index,
+                )
                 ocr_result = ocr.ocr_inference(plate_img)
 
                 if not ocr_result:
+                    emit_status(
+                        "ocr_failed",
+                        (f"Frame {index + 1}, vehicle {vehicle_index}: OCR failed."),
+                        frame_index=index,
+                        source_frame_number=source_frame_number,
+                        vehicle_index=vehicle_index,
+                    )
                     continue
 
                 plate_text = ocr_result.text
@@ -167,6 +267,21 @@ def process_video(
 
                 if progress_callback:
                     progress_callback(result)
+
+                emit_status(
+                    "detection_succeeded",
+                    (
+                        f"Frame {index + 1}, vehicle {vehicle_index}: "
+                        f"detected plate {plate_text}."
+                    ),
+                    frame_index=index,
+                    source_frame_number=source_frame_number,
+                    vehicle_index=vehicle_index,
+                    plate_text=plate_text,
+                    detection_count=len(results),
+                    detector_confidence=detector_confidence,
+                    ocr_confidence=ocr_result.confidence,
+                )
 
     finally:
         cap.release()
